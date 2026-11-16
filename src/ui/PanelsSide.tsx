@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { cutLength, cutOutline, createPanel, smallestBox, type Panel } from '../core/panel';
-import { polygonArea } from '../core/poly';
+import { cutLength, cutOutline, cutoutWarnings, createPanel, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
+import { bounds } from '../core/poly';
+import { newId } from '../core/project';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 
@@ -40,7 +41,7 @@ export function PanelsSide() {
             <li key={p.id}>
               <button className="list__main" onClick={() => openPanel(p.id)}>
                 <strong>{p.name}</strong>
-                <span>{squareMetres(polygonArea(cut.flat))} · on {surfaceName(p.surfaceId)}</span>
+                <span>{squareMetres(panelArea(p, cut))} · on {surfaceName(p.surfaceId)}</span>
               </button>
             </li>
           );
@@ -70,7 +71,7 @@ export function PanelsSide() {
 }
 
 function PanelDetails({ panel }: { panel: Panel }) {
-  const { project, updatePanel, deletePanel, openPanel, exportPanelDxf, panelFocus, setPanelFocus } = useApp();
+  const { project, updatePanel, deletePanel, openPanel, exportPanelDxf, panelFocus, setPanelFocus, splitting, setSplitting, updateSettings } = useApp();
   const [name, setName] = useState(panel.name);
   useEffect(() => { setName(panel.name); }, [panel.name]);
   const [allOffset, setAllOffset] = useState(project?.settings.defaultEdgeOffset ?? 15);
@@ -83,7 +84,15 @@ function PanelDetails({ panel }: { panel: Panel }) {
   const sheet = project.settings.sheet;
   const fits = long <= Math.max(sheet.width, sheet.height) && short <= Math.min(sheet.width, sheet.height);
   const n = panel.shape.corners.length;
-  const isOn = (kind: 'side' | 'corner', i: number) => panelFocus?.kind === kind && panelFocus.index === i;
+  const cutouts = panel.cutouts ?? [];
+  const setCutout = (i: number, change: Partial<Cutout>) => void updatePanel({ ...panel, cutouts: cutouts.map((c, k) => (k === i ? ({ ...c, ...change } as Cutout) : c)) });
+  const addCutout = (kind: Cutout['kind']) => {
+    const b = bounds(cut.flat), center: [number, number] = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
+    const c: Cutout = kind === 'circle' ? { id: newId(), kind, center, diameter: 50 } : { id: newId(), kind, center, width: 200, height: 100, angle: 0, radius: 10 };
+    setPanelFocus({ kind: 'cutout', index: cutouts.length });
+    void updatePanel({ ...panel, cutouts: [...cutouts, c] });
+  };
+  const isOn = (kind: 'side' | 'corner' | 'cutout', i: number) => panelFocus?.kind === kind && panelFocus.index === i;
   const set = <K extends 'offsets' | 'radii'>(key: K, i: number, v: number) => void updatePanel({ ...panel, [key]: panel[key].map((x, k) => (k === i ? v : x)) });
 
   const resetShape = () => {
@@ -101,12 +110,12 @@ function PanelDetails({ panel }: { panel: Panel }) {
       </label>
 
       <dl className="facts">
-        <dt>Panel area</dt><dd>{squareMetres(polygonArea(cut.flat))}</dd>
+        <dt>Panel area</dt><dd>{squareMetres(panelArea(panel, cut))}</dd>
         <dt>Length of cut</dt><dd>{mm(cutLength(cut))}</dd>
         <dt>Smallest box</dt><dd>{mm(long).replace(' mm', '')} × {mm(short)}</dd>
       </dl>
       {!fits && <div className="notice notice--warn">Does not fit on one {sheet.width} × {sheet.height} mm sheet. It will have to be split into several panels.</div>}
-      {cut.warnings.map((w, i) => <div key={i} className="notice notice--warn">{w}</div>)}
+      {[...cut.warnings, ...cutoutWarnings(panel, cut)].map((w, i) => <div key={i} className="notice notice--warn">{w}</div>)}
       {!surface && <div className="notice notice--warn">The surface this panel was made from has been deleted. The panel keeps its shape.</div>}
 
       <h3>Distance from the edge</h3>
@@ -142,6 +151,36 @@ function PanelDetails({ panel }: { panel: Panel }) {
         </tbody>
       </table>
       <small>0 keeps a corner sharp. Side and corner numbers are shown in the drawing.</small>
+
+      <h3>Openings</h3>
+      <small>Drains, fittings, hatches. The size is the hole that gets cut; drag an opening in the drawing to place it.</small>
+      {cutouts.map((c, i) => (
+        <div key={c.id} className={`opening${isOn('cutout', i) ? ' on' : ''}`} onMouseEnter={() => setPanelFocus({ kind: 'cutout', index: i })}>
+          <strong>O{i + 1}</strong>
+          {c.kind === 'circle' ? (
+            <label>Ø <NumberField value={c.diameter} onCommit={(v) => v > 0 && setCutout(i, { diameter: v })} /></label>
+          ) : (
+            <>
+              <label>W <NumberField value={c.width} onCommit={(v) => v > 0 && setCutout(i, { width: v })} /></label>
+              <label>H <NumberField value={c.height} onCommit={(v) => v > 0 && setCutout(i, { height: v })} /></label>
+              <label>Turn ° <NumberField value={c.angle} onCommit={(v) => setCutout(i, { angle: v })} /></label>
+              <label>Corner r <NumberField value={c.radius} onCommit={(v) => setCutout(i, { radius: v })} /></label>
+            </>
+          )}
+          <button className="ghost" title="Remove this opening" onClick={() => { setPanelFocus(null); void updatePanel({ ...panel, cutouts: cutouts.filter((_, k) => k !== i) }); }}>×</button>
+        </div>
+      ))}
+      <div className="row">
+        <button className="small" onClick={() => addCutout('circle')}>+ Round</button>
+        <button className="small" onClick={() => addCutout('rect')}>+ Rectangular</button>
+      </div>
+
+      <h3>Split into two panels</h3>
+      <div className="row">
+        <span>Gap between panels</span><NumberField value={project.settings.panelGap} onCommit={(v) => void updateSettings({ panelGap: v })} /><span>mm</span>
+      </div>
+      <button onClick={() => setSplitting(!splitting)}>{splitting ? 'Cancel' : 'Split this panel…'}</button>
+      <small>Click two points on the panel edge. Each half keeps its own offsets, corners and openings.</small>
 
       <div className="side__actions">
         <button className="primary" onClick={() => void exportPanelDxf(panel.id)}>Export DXF</button>

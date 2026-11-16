@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCorner, cutLength, cutOutline, moveCorner, panelToDxf, removeCorner, smallestBox, type Panel } from '../src/core/panel';
+import { addCorner, cutLength, cutOutline, cutoutOutline, cutoutWarnings, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
 import { bounds, polygonArea } from '../src/core/poly';
 import type { Vec2 } from '../src/core/vec';
 
@@ -114,3 +114,68 @@ describe('panel facts and DXF', () => {
     expect(dxf.split('\r\n 42\r\n').length + dxf.split('\r\n42\r\n').length - 2).toBe(4);
   });
 });
+
+describe('openings', () => {
+  it('a round and a rounded-rectangle opening have the right size', () => {
+    near(polygonArea(cutoutOutline({ id: 'a', kind: 'circle', center: [100, 100], diameter: 80 }).flat), Math.PI * 1600, 12);
+    const r = cutoutOutline({ id: 'b', kind: 'rect', center: [0, 0], width: 200, height: 100, angle: 90, radius: 10 });
+    near(Math.abs(polygonArea(r.flat)), 20000 - (4 - Math.PI) * 100, 12);
+    const b = bounds(r.flat);
+    expect([b.maxX - b.minX, b.maxY - b.minY].map(Math.round)).toEqual([100, 200]); // turned 90°
+  });
+
+  it('are taken off the panel area, warned about when outside, and exported as inner cuts', () => {
+    const p: Panel = { ...panel(rect, 15, 20), cutouts: [{ id: 'a', kind: 'circle', center: [500, 300], diameter: 100 }, { id: 'b', kind: 'circle', center: [5, 5], diameter: 60 }] };
+    const cut = cutOutline(p);
+    near(panelArea(p, cut), polygonArea(cut.flat) - Math.PI * 2500 - Math.PI * 900, 25);
+    expect(cutoutWarnings(p, cut)).toEqual(['Opening 2 reaches outside the panel.']);
+    expect(panelToDxf(p, undefined).split('INNER_CUT').length - 1).toBeGreaterThanOrEqual(3); // layer + two openings
+  });
+});
+
+describe('splitting', () => {
+  it('cuts a rectangle in two with a gap between the halves', () => {
+    const p = panel(rect, 15, 20);
+    const [a, b] = splitPanel(p, nearestEdgePoint(p.shape, 400, -5), nearestEdgePoint(p.shape, 400, 610), { gap: 4, radius: 5, ids: ['a', 'b'], names: ['A', 'B'] });
+    const ca = cutOutline(a), cb = cutOutline(b);
+    const ba = bounds(ca.flat), bb = bounds(cb.flat);
+    const [left, right] = ba.minX < bb.minX ? [ba, bb] : [bb, ba];
+    expect(left.minX).toBeCloseTo(15, 3); expect(left.maxX).toBeCloseTo(398, 3);
+    expect(right.minX).toBeCloseTo(402, 3); expect(right.maxX).toBeCloseTo(985, 3); // 4 mm apart
+    expect(left.minY).toBeCloseTo(15, 3); expect(right.maxY).toBeCloseTo(585, 3);
+    expect(ca.warnings).toEqual([]); expect(cb.warnings).toEqual([]);
+    // outside corners keep 20 mm, corners along the cut get 5 mm
+    expect([...ca.usedRadii].sort((x, y) => x - y).map(Math.round)).toEqual([5, 5, 20, 20]);
+    near(polygonArea(ca.flat) + polygonArea(cb.flat), 966 * 570 - (4 - Math.PI) * (400 + 25), 20);
+  });
+
+  it('can run from corner to corner, and sends each opening to its half', () => {
+    const p: Panel = { ...panel(rect, 0, 0), cutouts: [{ id: 'x', kind: 'circle', center: [800, 100], diameter: 50 }] };
+    const [a, b] = splitPanel(p, { side: 0, point: [0, 0] }, { side: 2, point: [1000, 600] }, { gap: 0, radius: 0, ids: ['a', 'b'], names: ['A', 'B'] });
+    expect(a.shape.corners.length).toBe(3); expect(b.shape.corners.length).toBe(3);
+    near(polygonArea(cutOutline(a).flat), 300000, 1);
+    const withHole = [a, b].filter((q) => q.cutouts?.length);
+    expect(withHole.length).toBe(1);
+    expect(pointIn(withHole[0], 800, 100)).toBe(true);
+  });
+
+  it('offers a square cut straight across', () => {
+    const hit = straightAcross(panel(rect, 0, 0).shape, { side: 0, point: [400, 0] })!;
+    expect(hit.side).toBe(2);
+    expect(hit.point[0]).toBeCloseTo(400, 6); expect(hit.point[1]).toBeCloseTo(600, 6);
+  });
+
+  it('refuses a split along one straight edge', () => {
+    const p = panel(rect, 0, 0);
+    expect(() => splitPanel(p, { side: 0, point: [200, 0] }, { side: 0, point: [700, 0] }, { gap: 4, radius: 5, ids: ['a', 'b'], names: ['A', 'B'] })).toThrow(/different sides/);
+    expect(() => splitPanel(p, { side: 0, point: [0, 0] }, { side: 0, point: [1000, 0] }, { gap: 4, radius: 5, ids: ['a', 'b'], names: ['A', 'B'] })).toThrow();
+  });
+});
+
+function pointIn(p: Panel, x: number, y: number) {
+  const f = p.shape.corners.flat(); let inside = false;
+  for (let i = 0, j = f.length / 2 - 1; i < f.length / 2; j = i++) {
+    if ((f[i * 2 + 1] > y) !== (f[j * 2 + 1] > y) && x < ((f[j * 2] - f[i * 2]) * (y - f[i * 2 + 1])) / (f[j * 2 + 1] - f[i * 2 + 1]) + f[i * 2]) inside = !inside;
+  }
+  return inside;
+}

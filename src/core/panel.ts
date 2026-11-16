@@ -30,8 +30,15 @@ export interface Panel {
   offsets: number[];
   /** per corner: rounding radius, mm (0 = sharp) */
   radii: number[];
+  /** openings cut out of the panel: drains, fittings, hatches */
+  cutouts?: Cutout[];
   createdAt: string;
 }
+
+/** An opening. Its size is the size of the hole that is cut (add clearance yourself). */
+export type Cutout =
+  | { id: string; kind: 'circle'; center: Vec2; diameter: number }
+  | { id: string; kind: 'rect'; center: Vec2; width: number; height: number; angle: number; radius: number };
 
 export interface CutOutline {
   /** x0,y0,x1,y1… closed, counter-clockwise */
@@ -282,6 +289,151 @@ export function addCorner(panel: Panel, sideIndex: number, at: Vec2, radius: num
   };
 }
 
+// ---------- openings ----------
+
+/** The cut line of an opening, with true arcs. */
+export function cutoutOutline(c: Cutout): { points: number[]; bulges: number[]; flat: number[] } {
+  let points: number[], bulges: number[];
+  if (c.kind === 'circle') {
+    const r = c.diameter / 2;
+    points = [c.center[0] - r, c.center[1], c.center[0] + r, c.center[1]];
+    bulges = [1, 1]; // two half circles
+  } else {
+    const w = c.width / 2, h = c.height / 2, r = Math.max(0, Math.min(c.radius, w, h));
+    const local: number[] = r > 0
+      ? [-w + r, -h, w - r, -h, w, -h + r, w, h - r, w - r, h, -w + r, h, -w, h - r, -w, -h + r]
+      : [-w, -h, w, -h, w, h, -w, h];
+    const quarter = Math.tan(Math.PI / 8);
+    bulges = r > 0 ? [0, quarter, 0, quarter, 0, quarter, 0, quarter] : [0, 0, 0, 0];
+    const cos = Math.cos((c.angle * Math.PI) / 180), sin = Math.sin((c.angle * Math.PI) / 180);
+    points = [];
+    for (let i = 0; i < local.length; i += 2) points.push(c.center[0] + local[i] * cos - local[i + 1] * sin, c.center[1] + local[i] * sin + local[i + 1] * cos);
+  }
+  return { points, bulges, flat: flattenArcs(points, bulges) };
+}
+
+export function pointInPolygon(x: number, y: number, poly: ArrayLike<number>): boolean {
+  let inside = false;
+  const n = poly.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i * 2], yi = poly[i * 2 + 1], xj = poly[j * 2], yj = poly[j * 2 + 1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Plain-language problems with the openings of a panel (outside the panel, or too close to its edge). */
+export function cutoutWarnings(panel: Panel, cut: CutOutline): string[] {
+  const out: string[] = [];
+  (panel.cutouts ?? []).forEach((c, i) => {
+    const flat = cutoutOutline(c).flat;
+    let outside = false;
+    for (let k = 0; k < flat.length; k += 2) if (!pointInPolygon(flat[k], flat[k + 1], cut.flat)) { outside = true; break; }
+    if (outside) out.push(`Opening ${i + 1} reaches outside the panel.`);
+  });
+  return out;
+}
+
+// ---------- splitting ----------
+
+/** A point on the edge of the panel shape: which side, and where. */
+export interface EdgePoint { side: number; point: Vec2 }
+
+/** The point of the panel shape's edge nearest to (x, y). */
+export function nearestEdgePoint(shape: PanelShape, x: number, y: number): EdgePoint & { distance: number } {
+  let best: EdgePoint & { distance: number } = { side: 0, point: shape.corners[0], distance: Infinity };
+  shape.corners.forEach((_, i) => {
+    const sp = sidePath(shape, i);
+    for (let k = 0; k + 3 < sp.length; k += 2) {
+      const ax = sp[k], ay = sp[k + 1], dx = sp[k + 2] - ax, dy = sp[k + 3] - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = Math.max(0, Math.min(1, len2 > 0 ? ((x - ax) * dx + (y - ay) * dy) / len2 : 0));
+      const px = ax + t * dx, py = ay + t * dy, d = Math.hypot(x - px, y - py);
+      if (d < best.distance) best = { side: i, point: [px, py], distance: d };
+    }
+  });
+  return best;
+}
+
+/**
+ * From a point on the edge, straight across the panel at a right angle to that edge:
+ * where does it reach the edge again? Used to offer a square split.
+ */
+export function straightAcross(shape: PanelShape, from: EdgePoint): EdgePoint | null {
+  const sp = sidePath(shape, from.side);
+  // direction of the edge at that point
+  let dx = sp[sp.length - 2] - sp[0], dy = sp[sp.length - 1] - sp[1], bestD = Infinity;
+  for (let k = 0; k + 3 < sp.length; k += 2) {
+    const mx = (sp[k] + sp[k + 2]) / 2 - from.point[0], my = (sp[k + 1] + sp[k + 3]) / 2 - from.point[1];
+    if (mx * mx + my * my < bestD) { bestD = mx * mx + my * my; dx = sp[k + 2] - sp[k]; dy = sp[k + 3] - sp[k + 1]; }
+  }
+  const l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l; // inwards for a counter-clockwise shape
+  let best: EdgePoint | null = null, bestT = Infinity;
+  shape.corners.forEach((_, i) => {
+    const q = sidePath(shape, i);
+    for (let k = 0; k + 3 < q.length; k += 2) {
+      const ax = q[k], ay = q[k + 1], ex = q[k + 2] - ax, ey = q[k + 3] - ay;
+      const den = nx * ey - ny * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((ax - from.point[0]) * ey - (ay - from.point[1]) * ex) / den;
+      const u = ((ax - from.point[0]) * ny - (ay - from.point[1]) * nx) / den;
+      if (t > 1 && u >= 0 && u <= 1 && t < bestT) { bestT = t; best = { side: i, point: [from.point[0] + nx * t, from.point[1] + ny * t] }; }
+    }
+  });
+  return best;
+}
+
+/** Makes sure there is a corner at an edge point; returns the panel and that corner's index. */
+function cornerAt(panel: Panel, at: EdgePoint): { panel: Panel; index: number } {
+  const { corners } = panel.shape, n = corners.length;
+  const a = at.side, b = (at.side + 1) % n;
+  if (dist(corners[a], at.point) < 1) return { panel, index: a };
+  if (dist(corners[b], at.point) < 1) return { panel, index: b };
+  return { panel: addCorner(panel, at.side, at.point, 0), index: at.side + 1 };
+}
+
+/**
+ * Cuts a panel in two along a straight line between two points on its edge.
+ * The two halves keep everything they had; along the cut each is set back by
+ * half the gap, so the finished panels sit `gap` mm apart.
+ */
+export function splitPanel(
+  panel: Panel, from: EdgePoint, to: EdgePoint,
+  opts: { gap: number; radius: number; ids: [string, string]; names: [string, string] },
+): [Panel, Panel] {
+  if (from.side === to.side && !panel.shape.curves[from.side]) throw new Error('Pick the two points on different sides of the panel.');
+  // insert the later point first, so the earlier side number stays valid
+  const [first, second] = from.side < to.side || (from.side === to.side && false) ? [from, to] : [to, from];
+  const two = cornerAt(panel, second);
+  const one = cornerAt(two.panel, first);
+  const p = one.panel;
+  const i = one.index;
+  const j = two.index + (p.shape.corners.length - two.panel.shape.corners.length); // shifted if a corner was inserted before it
+  const n = p.shape.corners.length;
+  if (i === j || (j - i + n) % n === 1 && !p.shape.curves[i] || (i - j + n) % n === 1 && !p.shape.curves[j]) {
+    throw new Error('These two points are on the same straight edge: there is nothing to split.');
+  }
+  const loop = (a: number, b: number, id: string, name: string): Panel => {
+    const idx: number[] = [];
+    for (let k = a; ; k = (k + 1) % n) { idx.push(k); if (k === b) break; }
+    const last = idx.length - 1;
+    return {
+      ...p, id, name,
+      shape: { corners: idx.map((k) => p.shape.corners[k]), curves: idx.map((k, q) => (q === last ? null : p.shape.curves[k])) },
+      offsets: idx.map((k, q) => (q === last ? opts.gap / 2 : p.offsets[k])),
+      radii: idx.map((k, q) => (q === 0 || q === last ? opts.radius : p.radii[k])),
+      cutouts: undefined,
+    };
+  };
+  const A = loop(i, j, opts.ids[0], opts.names[0]), B = loop(j, i, opts.ids[1], opts.names[1]);
+  // each opening goes to the half it lies in
+  for (const c of panel.cutouts ?? []) {
+    const target = pointInPolygon(c.center[0], c.center[1], A.shape.corners.flat()) ? A : B;
+    target.cutouts = [...(target.cutouts ?? []), c];
+  }
+  return [A, B];
+}
+
 // ---------- facts and export ----------
 
 export function cutLength(cut: CutOutline): number {
@@ -306,6 +458,13 @@ export function smallestBox(flat: number[]): [number, number] {
   return best;
 }
 
+/** Area of EVA in the panel: the outline minus its openings, mm². */
+export function panelArea(panel: Panel, cut: CutOutline): number {
+  let a = polygonArea(cut.flat);
+  for (const c of panel.cutouts ?? []) a -= Math.abs(polygonArea(cutoutOutline(c).flat));
+  return a;
+}
+
 export function panelToDxf(panel: Panel, surface: Surface | undefined): string {
   const cut = cutOutline(panel);
   const reference = surface ? outlinePolygonOf(surface) : [];
@@ -313,9 +472,10 @@ export function panelToDxf(panel: Panel, surface: Surface | undefined): string {
   const b = bounds(reference.length ? reference : cut.flat);
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));
   return writeDxf(
-    [{ name: 'OUTER_CUT', color: 1 }, { name: 'REFERENCE', color: 8 }],
+    [{ name: 'OUTER_CUT', color: 1 }, { name: 'INNER_CUT', color: 5 }, { name: 'REFERENCE', color: 8 }],
     [
       { layer: 'OUTER_CUT', points: shift(cut.points), bulges: cut.bulges },
+      ...(panel.cutouts ?? []).map((c) => { const o = cutoutOutline(c); return { layer: 'INNER_CUT', points: shift(o.points), bulges: o.bulges }; }),
       ...(reference.length ? [{ layer: 'REFERENCE', points: shift(reference) }] : []),
       ...(surface ? surface.raw.holes.map((h) => ({ layer: 'REFERENCE', points: shift(h.points) })) : []),
     ],

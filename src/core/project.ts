@@ -38,6 +38,8 @@ export interface ProjectSettings {
   material: { thickness: number; topLayer: number; topColor: string; bottomColor: string };
   defaultEdgeOffset: number;
   defaultCornerRadius: number;
+  /** gap left between neighbouring panels when one is split, mm */
+  panelGap: number;
   tools: ToolDef[];
 }
 
@@ -69,6 +71,7 @@ export function defaultSettings(): ProjectSettings {
     material: { thickness: 6, topLayer: 3, topColor: '#8a8f94', bottomColor: '#1c1c1c' },
     defaultEdgeOffset: 15,
     defaultCornerRadius: 20,
+    panelGap: 4,
     tools: [],
   };
 }

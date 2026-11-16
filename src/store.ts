@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
 import { createSurface, surfaceToDxf, type Surface } from './core/surface';
-import { createPanel, panelToDxf, type Panel } from './core/panel';
+import { createPanel, panelToDxf, splitPanel, type EdgePoint, type Panel } from './core/panel';
+import type { ProjectSettings } from './core/project';
 import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
   copyScanIntoProject, createProjectFolder, ensurePermission, openProjectFolder,
@@ -11,7 +12,7 @@ import {
 export interface OpenScan extends LoadedScan { id: string; name: string }
 export type Step = 'scans' | 'surfaces' | 'panels';
 /** a side or corner of the open panel that is pointed at (in the table or in the drawing) */
-export type PanelFocus = { kind: 'side' | 'corner'; index: number } | null;
+export type PanelFocus = { kind: 'side' | 'corner' | 'cutout'; index: number } | null;
 
 interface State {
   project: Project | null;
@@ -28,6 +29,8 @@ interface State {
   /** panel open in the 2D panel editor */
   openPanelId: string | null;
   panelFocus: PanelFocus;
+  /** true while the user is picking the two points of a split */
+  splitting: boolean;
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -55,6 +58,9 @@ interface State {
   updatePanel(panel: Panel, save?: boolean): Promise<void>;
   deletePanel(id: string): Promise<void>;
   exportPanelDxf(id: string): Promise<void>;
+  setSplitting(on: boolean): void;
+  splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
+  updateSettings(change: Partial<ProjectSettings>): Promise<void>;
   clearError(): void;
   clearNotice(): void;
 }
@@ -84,7 +90,7 @@ export const useApp = create<State>((set, get) => {
     set({ scan: { id: ref.id, name: ref.name, ...(await loadScanFile(file)) }, selectedRegion: null });
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved',
@@ -137,7 +143,7 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false }),
     selectRegion: (id) => set({ selectedRegion: id }),
 
     addSurfaceFromRegion: async () => {
@@ -193,7 +199,8 @@ export const useApp = create<State>((set, get) => {
       await persist({ ...project, panels: [...project.panels, panel] });
     },
 
-    openPanel: (id) => set({ openPanelId: id, panelFocus: null }),
+    openPanel: (id) => set({ openPanelId: id, panelFocus: null, splitting: false }),
+    setSplitting: (on) => set({ splitting: on, panelFocus: null }),
     setPanelFocus: (focus) => set({ panelFocus: focus }),
 
     updatePanel: async (panel, save = true) => {
@@ -208,6 +215,29 @@ export const useApp = create<State>((set, get) => {
       if (!project) return;
       if (openPanelId === id) set({ openPanelId: null });
       await persist({ ...project, panels: project.panels.filter((p) => p.id !== id) });
+    },
+
+    splitOpenPanel: async (from, to) => {
+      const { project, openPanelId } = get();
+      const panel = project?.panels.find((p) => p.id === openPanelId);
+      if (!project || !panel) return;
+      try {
+        const taken = project.panels.filter((p) => p.id !== panel.id).map((p) => p.name);
+        const nameA = uniqueName(`${panel.name} A`, taken), nameB = uniqueName(`${panel.name} B`, [...taken, nameA]);
+        const [a, b] = splitPanel(panel, from, to, {
+          gap: project.settings.panelGap, radius: Math.min(project.settings.defaultCornerRadius, 5),
+          ids: [newId(), newId()], names: [nameA, nameB],
+        });
+        set({ splitting: false, openPanelId: a.id, panelFocus: null });
+        await persist({ ...project, panels: project.panels.flatMap((p) => (p.id === panel.id ? [a, b] : [p])) });
+      } catch (e) {
+        set({ splitting: false, error: message(e) });
+      }
+    },
+
+    updateSettings: async (change) => {
+      const { project } = get();
+      if (project) await persist({ ...project, settings: { ...project.settings, ...change } });
     },
 
     exportPanelDxf: async (id) => {
