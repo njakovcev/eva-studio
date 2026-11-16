@@ -211,6 +211,22 @@ export function cutOutline(panel: Panel): CutOutline {
   return { points, bulges, flat, usedRadii, warnings };
 }
 
+/**
+ * A line running parallel to the cut line, `inset` mm inside it (used for the border groove).
+ * Rounded corners stay concentric: outside corners get a smaller radius, inside corners a larger one.
+ */
+export function insetCut(panel: Panel, inset: number): CutOutline {
+  const { corners } = panel.shape, n = corners.length;
+  const radii = panel.radii.map((r, i) => {
+    const prev = sidePath(panel.shape, (i - 1 + n) % n), next = sidePath(panel.shape, i);
+    const ax = prev[prev.length - 2] - prev[prev.length - 4], ay = prev[prev.length - 1] - prev[prev.length - 3];
+    const bx = next[2] - next[0], by = next[3] - next[1];
+    const outside = ax * by - ay * bx > 0; // a left turn on a counter-clockwise shape
+    return outside ? Math.max(0, r - inset) : r > 0 ? r + inset : 0;
+  });
+  return cutOutline({ ...panel, offsets: panel.offsets.map((o) => o + inset), radii });
+}
+
 /** Breaks arcs into short straight pieces (within `tolerance` mm of the true arc). */
 export function flattenArcs(points: number[], bulges: number[], tolerance = 0.05): number[] {
   const out: number[] = [];

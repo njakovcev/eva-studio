@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
 import { createSurface, surfaceToDxf, type Surface } from './core/surface';
-import { createPanel, panelToDxf, splitPanel, type EdgePoint, type Panel } from './core/panel';
+import { createPanel, splitPanel, type EdgePoint, type Panel } from './core/panel';
+import { createDesign, designedPanelToDxf, type Design } from './core/design';
 import type { ProjectSettings } from './core/project';
 import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
@@ -10,7 +11,7 @@ import {
 } from './io/projectFolder';
 
 export interface OpenScan extends LoadedScan { id: string; name: string }
-export type Step = 'scans' | 'surfaces' | 'panels';
+export type Step = 'scans' | 'surfaces' | 'panels' | 'design';
 /** a side or corner of the open panel that is pointed at (in the table or in the drawing) */
 export type PanelFocus = { kind: 'side' | 'corner' | 'cutout'; index: number } | null;
 
@@ -31,6 +32,8 @@ interface State {
   panelFocus: PanelFocus;
   /** true while the user is picking the two points of a split */
   splitting: boolean;
+  /** surface whose design is shown in the Design step */
+  designSurfaceId: string | null;
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -61,6 +64,9 @@ interface State {
   deletePanel(id: string): Promise<void>;
   exportPanelDxf(id: string): Promise<void>;
   setSplitting(on: boolean): void;
+  openDesign(surfaceId: string | null): Promise<void>;
+  updateDesign(design: Design, save?: boolean): Promise<void>;
+  exportDesignDxfs(surfaceId: string): Promise<void>;
   splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
   updateSettings(change: Partial<ProjectSettings>): Promise<void>;
   /** Steps back / forward through the changes made to surfaces, panels and settings since the project was opened. */
@@ -133,7 +139,7 @@ export const useApp = create<State>((set, get) => {
     set({ scan: { id: ref.id, name: ref.name, ...(await loadScanFile(file)) }, selectedRegion: null });
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
@@ -191,7 +197,7 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null }),
     selectRegion: (id) => set({ selectedRegion: id }),
 
     addSurfaceFromRegion: async () => {
@@ -288,13 +294,44 @@ export const useApp = create<State>((set, get) => {
       if (project) await persist({ ...project, settings: { ...project.settings, ...change } });
     },
 
+    openDesign: async (surfaceId) => {
+      const { project } = get();
+      set({ designSurfaceId: surfaceId });
+      if (!project || !surfaceId || project.designs.some((d) => d.surfaceId === surfaceId)) return;
+      // first visit: start this surface with the default design
+      await persist({ ...project, designs: [...project.designs, createDesign(newId(), surfaceId)] });
+    },
+
+    updateDesign: async (design, save = true) => {
+      const { project } = get();
+      if (!project) return;
+      const next = { ...project, designs: project.designs.map((d) => (d.id === design.id ? design : d)) };
+      if (save) await persist(next); else set({ project: next });
+    },
+
+    exportDesignDxfs: async (surfaceId) => {
+      const { project, dir } = get();
+      if (!project || !dir) return;
+      const surface = project.surfaces.find((s) => s.id === surfaceId);
+      const design = project.designs.find((d) => d.surfaceId === surfaceId);
+      const panels = project.panels.filter((p) => p.surfaceId === surfaceId);
+      try {
+        for (const panel of panels) await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design));
+        set({ notice: `Saved ${panels.length} DXF file${panels.length === 1 ? '' : 's'} to the export folder of the project.` });
+      } catch (e) {
+        set({ error: `The DXF files could not be saved: ${message(e)}` });
+      }
+    },
+
     exportPanelDxf: async (id) => {
       const { project, dir } = get();
       const panel = project?.panels.find((p) => p.id === id);
       if (!project || !panel || !dir) return;
       try {
         const surface = project.surfaces.find((s) => s.id === panel.surfaceId);
-        const path = await writeExport(dir, `${panel.name}.dxf`, panelToDxf(panel, surface));
+        // if this surface already has a design, its milling lines are part of the file
+        const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
+        const path = await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design));
         set({ notice: `Saved to ${path} in the project folder.` });
       } catch (e) {
         set({ error: `The DXF could not be saved: ${message(e)}` });

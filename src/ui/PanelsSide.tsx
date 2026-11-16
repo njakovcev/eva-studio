@@ -195,7 +195,8 @@ function PanelDetails({ panel }: { panel: Panel }) {
       <small>Click two points on the panel edge. Each half keeps its own offsets, corners and openings.</small>
 
       <div className="side__actions">
-        <button className="primary" onClick={() => void exportPanelDxf(panel.id)}>Export DXF</button>
+        <button className="primary" onClick={() => { const st = useApp.getState(); st.setStep('design'); void st.openDesign(panel.surfaceId); }}>Next: design →</button>
+        <button onClick={() => void exportPanelDxf(panel.id)}>Export DXF</button>
         {surface && <button onClick={resetShape}>Reset shape to the surface</button>}
         <button className="danger" onClick={() => { if (confirm(`Delete panel "${panel.name}"?`)) void deletePanel(panel.id); }}>Delete panel</button>
       </div>

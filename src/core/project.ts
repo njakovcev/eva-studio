@@ -10,6 +10,7 @@
 import type { MeshStats } from './mesh';
 import type { Surface } from './surface';
 import type { Panel } from './panel';
+import type { Design } from './design';
 
 export const FORMAT_VERSION = 1;
 export const PROJECT_FILE = 'project.json';
@@ -61,8 +62,8 @@ export interface Project {
   surfaces: Surface[];
   /** EVA panels laid on surfaces. */
   panels: Panel[];
-  /** One design per surface (v0.4). */
-  designs: unknown[];
+  /** One design per surface. */
+  designs: Design[];
 }
 
 export function defaultSettings(): ProjectSettings {

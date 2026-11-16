@@ -141,3 +141,13 @@ button.danger { color: var(--danger); }
 .pe-split__len { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
 
 .history { display: flex; gap: 4px; }
+
+/* v0.4 – design */
+select { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; } .check input { width: auto; }
+.swatch { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.swatch input[type='color'] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { display: flex; padding: 0; overflow: hidden; border-radius: 6px; width: 36px; height: 22px; }
+.presets i { flex: 1; } .presets i + i { flex: 0 0 9px; }
+.field .row { gap: 6px; } .field .row input[type='range'] { flex: 1; min-width: 0; width: auto; }
