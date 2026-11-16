@@ -11,16 +11,30 @@ export function ViewerPane({ onDropFile }: { onDropFile: (file: File) => void })
   const viewer = useRef<Viewer3D | null>(null);
   const scan = useApp((s) => s.scan);
   const busy = useApp((s) => s.busy);
+  const step = useApp((s) => s.step);
+  const selectedRegion = useApp((s) => s.selectedRegion);
   const [dragging, setDragging] = useState(false);
   const [glError, setGlError] = useState<string | null>(null);
 
   useEffect(() => {
-    try { viewer.current = new Viewer3D(host.current!); }
-    catch { setGlError('3D graphics (WebGL) is not available in this browser.'); }
+    try {
+      viewer.current = new Viewer3D(host.current!);
+      viewer.current.onPick = (region) => {
+        const s = useApp.getState();
+        if (s.step === 'surfaces') s.selectRegion(region >= 0 ? region : null);
+      };
+    } catch { setGlError('3D graphics (WebGL) is not available in this browser.'); }
     return () => { viewer.current?.dispose(); viewer.current = null; };
   }, []);
 
-  useEffect(() => { viewer.current?.setMesh(scan?.mesh ?? null); }, [scan]);
+  useEffect(() => { viewer.current?.setScan(scan?.mesh ?? null, scan?.labels ?? null); }, [scan]);
+  useEffect(() => { viewer.current?.setShowAreas(step === 'surfaces'); }, [step, scan]);
+  useEffect(() => { viewer.current?.setSelected(selectedRegion); }, [selectedRegion, scan]);
+
+  const faceSelected = () => {
+    const region = scan && selectedRegion !== null ? scan.regions[selectedRegion] : null;
+    if (region) viewer.current?.faceDirection(region.plane.normal, region.plane.v);
+  };
 
   return (
     <div
@@ -45,9 +59,12 @@ export function ViewerPane({ onDropFile }: { onDropFile: (file: File) => void })
       {scan && (
         <>
           <div className="viewer__views">
+            {step === 'surfaces' && selectedRegion !== null && <button onClick={faceSelected}>Face selected</button>}
             {VIEWS.map((v) => <button key={v.id} onClick={() => viewer.current?.setView(v.id)}>{v.label}</button>)}
           </div>
-          <div className="viewer__hint">Drag: rotate · Right-drag: move · Wheel: zoom</div>
+          <div className="viewer__hint">
+            {step === 'surfaces' ? 'Click a coloured area to select it · ' : ''}Drag: rotate · Right-drag: move · Wheel: zoom
+          </div>
         </>
       )}
     </div>

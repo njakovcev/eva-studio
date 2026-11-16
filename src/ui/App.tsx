@@ -1,21 +1,33 @@
-import { useRef } from 'react';
-import { useApp } from '../store';
+import { useEffect, useRef } from 'react';
+import { useApp, type Step } from '../store';
+import { OutlineEditor } from './OutlineEditor';
 import { StartScreen } from './StartScreen';
+import { SurfacesSide } from './SurfacesSide';
 import { ViewerPane } from './ViewerPane';
 import { count, size, squareMetres } from './format';
 
-const STEPS = [
+const STEPS: { id: string; label: string; ready: boolean }[] = [
   { id: 'scans', label: 'Scans', ready: true },
-  { id: 'surfaces', label: 'Surfaces', ready: false },
+  { id: 'surfaces', label: 'Surfaces', ready: true },
   { id: 'panels', label: 'Panels', ready: false },
   { id: 'design', label: 'Design', ready: false },
   { id: 'export', label: 'Export', ready: false },
 ];
 
 export function App() {
-  const { project, scan, error, saveState, busy, clearError, closeProject, addScan, showScan, removeScan, quickView } = useApp();
+  const {
+    project, scan, step, openSurfaceId, error, notice, saveState, busy,
+    clearError, clearNotice, closeProject, addScan, showScan, removeScan, quickView, setStep,
+  } = useApp();
   const fileInput = useRef<HTMLInputElement>(null);
   const inWorkspace = project !== null || scan !== null;
+  const openSurface = project?.surfaces.find((s) => s.id === openSurfaceId);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(clearNotice, 6000);
+    return () => clearTimeout(t);
+  }, [notice, clearNotice]);
 
   const takeFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.obj')) {
@@ -33,6 +45,7 @@ export function App() {
           <button className="ghost" onClick={clearError}>Dismiss</button>
         </div>
       )}
+      {notice && <div className="toast" role="status">{notice}</div>}
 
       {!inWorkspace ? <StartScreen /> : (
         <>
@@ -42,11 +55,18 @@ export function App() {
               {project ? <><strong>{project.project.name}</strong>{project.project.client && <span> · {project.project.client}</span>}</> : <strong>Quick view (not saved)</strong>}
             </div>
             <nav className="steps">
-              {STEPS.map((s, i) => (
-                <button key={s.id} className={i === 0 ? 'step step--on' : 'step'} disabled={!s.ready} title={s.ready ? '' : 'Coming in a later version'}>
-                  <span>{i + 1}</span>{s.label}
-                </button>
-              ))}
+              {STEPS.map((s, i) => {
+                const usable = s.ready && (s.id === 'scans' || project !== null);
+                return (
+                  <button
+                    key={s.id} className={step === s.id ? 'step step--on' : 'step'} disabled={!usable}
+                    title={!s.ready ? 'Coming in a later version' : !usable ? 'Create or open a project first' : ''}
+                    onClick={() => setStep(s.id as Step)}
+                  >
+                    <span>{i + 1}</span>{s.label}
+                  </button>
+                );
+              })}
             </nav>
             {project && (
               <div className={`save save--${saveState}`}>
@@ -57,39 +77,46 @@ export function App() {
 
           <main className="work">
             <aside className="side">
-              <div className="side__head">
-                <h2>Scans</h2>
-                {project && <button className="primary small" disabled={!!busy} onClick={() => fileInput.current?.click()}>Add scan</button>}
-              </div>
-              <input ref={fileInput} type="file" accept=".obj" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) takeFile(f); e.target.value = ''; }} />
+              {step === 'surfaces' ? <SurfacesSide /> : (
+                <>
+                  <div className="side__head">
+                    <h2>Scans</h2>
+                    {project && <button className="primary small" disabled={!!busy} onClick={() => fileInput.current?.click()}>Add scan</button>}
+                  </div>
+                  <input ref={fileInput} type="file" accept=".obj" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) takeFile(f); e.target.value = ''; }} />
 
-              {project && project.scans.length === 0 && <p className="muted">No scans yet. Export an OBJ from the scanner software and add it here.</p>}
-              {project && (
-                <ul className="list">
-                  {project.scans.map((s) => (
-                    <li key={s.id} className={scan?.id === s.id ? 'on' : ''}>
-                      <button className="list__main" onClick={() => void showScan(s.id)}>
-                        <strong>{s.name}</strong>
-                        <span>{size(s.stats)}</span>
-                      </button>
-                      <button className="ghost" title="Remove from project (the file stays in the scans folder)" onClick={() => { if (confirm(`Remove "${s.name}" from the project?\nThe file stays in the scans folder.`)) void removeScan(s.id); }}>×</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                  {project && project.scans.length === 0 && <p className="muted">No scans yet. Export an OBJ from the scanner software and add it here.</p>}
+                  {project && (
+                    <ul className="list">
+                      {project.scans.map((s) => (
+                        <li key={s.id} className={scan?.id === s.id ? 'on' : ''}>
+                          <button className="list__main" onClick={() => void showScan(s.id)}>
+                            <strong>{s.name}</strong>
+                            <span>{size(s.stats)}</span>
+                          </button>
+                          <button className="ghost" title="Remove from project (the file stays in the scans folder)" onClick={() => { if (confirm(`Remove "${s.name}" from the project?\nThe file stays in the scans folder.`)) void removeScan(s.id); }}>×</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-              {scan && (
-                <dl className="facts">
-                  <dt>File</dt><dd>{scan.name}</dd>
-                  <dt>Size (X × Y × Z)</dt><dd>{size(scan.stats)}</dd>
-                  <dt>Scanned area</dt><dd>{squareMetres(scan.stats.area)}</dd>
-                  <dt>Triangles</dt><dd>{count(scan.stats.triangles)}</dd>
-                  <dt>Points</dt><dd>{count(scan.stats.vertices)}</dd>
-                </dl>
+                  {scan && (
+                    <dl className="facts">
+                      <dt>File</dt><dd>{scan.name}</dd>
+                      <dt>Size (X × Y × Z)</dt><dd>{size(scan.stats)}</dd>
+                      <dt>Scanned area</dt><dd>{squareMetres(scan.stats.area)}</dd>
+                      <dt>Triangles</dt><dd>{count(scan.stats.triangles)}</dd>
+                      <dt>Flat areas found</dt><dd>{scan.regions.length}</dd>
+                    </dl>
+                  )}
+                  {project && scan && scan.regions.length > 0 && <button onClick={() => setStep('surfaces')}>Next: pick surfaces →</button>}
+                  <p className="muted side__foot">Scans are read as millimetres.</p>
+                </>
               )}
-              <p className="muted side__foot">Scans are read as millimetres.</p>
             </aside>
-            <ViewerPane onDropFile={takeFile} />
+            {/* the 3D view stays mounted (hidden) while the 2D editor is open, so the scan is not rebuilt */}
+            <div className={openSurface ? 'pane pane--hidden' : 'pane'}><ViewerPane onDropFile={takeFile} /></div>
+            {openSurface && <div className="pane"><OutlineEditor surface={openSurface} /></div>}
           </main>
         </>
       )}

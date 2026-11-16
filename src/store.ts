@@ -1,22 +1,28 @@
 import { create } from 'zustand';
-import type { MeshData } from './core/obj';
-import type { MeshStats } from './core/mesh';
-import { createProject, newId, type Project, type ScanRef } from './core/project';
-import { loadScanFile } from './io/loadScan';
+import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
+import { createSurface, surfaceToDxf, type Surface } from './core/surface';
+import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
   copyScanIntoProject, createProjectFolder, ensurePermission, openProjectFolder,
-  readProjectFile, rememberProject, saveProject,
+  readProjectFile, rememberProject, saveProject, writeExport,
 } from './io/projectFolder';
 
-export interface OpenScan { id: string; name: string; mesh: MeshData; stats: MeshStats }
+export interface OpenScan extends LoadedScan { id: string; name: string }
+export type Step = 'scans' | 'surfaces';
 
 interface State {
   project: Project | null;
   dir: FileSystemDirectoryHandle | null;
   /** The scan currently shown in 3D. Without a project this is a "quick view". */
   scan: OpenScan | null;
+  step: Step;
+  /** flat area highlighted in 3D (index into scan.regions) */
+  selectedRegion: number | null;
+  /** surface open in the 2D outline editor */
+  openSurfaceId: string | null;
   busy: string | null;
   error: string | null;
+  notice: string | null;
   saveState: 'saved' | 'saving' | 'failed';
 
   newProject(info: { name: string; client: string; boat: string }, parent: FileSystemDirectoryHandle): Promise<void>;
@@ -26,7 +32,16 @@ interface State {
   showScan(id: string): Promise<void>;
   removeScan(id: string): Promise<void>;
   quickView(file: File): Promise<void>;
+  setStep(step: Step): void;
+  selectRegion(id: number | null): void;
+  addSurfaceFromRegion(): Promise<void>;
+  openSurface(id: string | null): void;
+  /** `save: false` while dragging; the last change of a gesture must save. */
+  updateSurface(surface: Surface, save?: boolean): Promise<void>;
+  deleteSurface(id: string): Promise<void>;
+  exportSurfaceDxf(id: string): Promise<void>;
   clearError(): void;
+  clearNotice(): void;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -50,43 +65,43 @@ export const useApp = create<State>((set, get) => {
   };
 
   const load = async (ref: ScanRef) => {
-    const dir = get().dir!;
-    const file = await readProjectFile(dir, ref.file);
-    const { mesh, stats } = await loadScanFile(file);
-    set({ scan: { id: ref.id, name: ref.name, mesh, stats } });
+    const file = await readProjectFile(get().dir!, ref.file);
+    set({ scan: { id: ref.id, name: ref.name, ...(await loadScanFile(file)) }, selectedRegion: null });
   };
 
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, error: null, notice: null };
+
   return {
-    project: null, dir: null, scan: null, busy: null, error: null, saveState: 'saved',
+    ...closed, busy: null, saveState: 'saved',
 
     newProject: (info, parent) => run('Creating project…', async () => {
       const project = createProject(info);
       const dir = await createProjectFolder(parent, project);
-      set({ project, dir, scan: null, saveState: 'saved' });
+      set({ ...closed, project, dir, saveState: 'saved' });
       await rememberProject(project, dir);
     }),
 
     openProject: (dir) => run('Opening project…', async () => {
       if (!(await ensurePermission(dir))) throw new Error('Access to the folder was not allowed.');
       const project = await openProjectFolder(dir);
-      set({ project, dir, scan: null, saveState: 'saved' });
+      set({ ...closed, project, dir, saveState: 'saved' });
       await rememberProject(project, dir);
       if (project.scans.length) await load(project.scans[0]);
     }),
 
-    closeProject: () => set({ project: null, dir: null, scan: null, error: null }),
+    closeProject: () => set(closed),
 
     addScan: (file) => run(`Reading ${file.name}…`, async () => {
       const { project, dir } = get();
       if (!project || !dir) return;
       // Parse first: a file that cannot be read is never copied into the project.
-      const { mesh, stats } = await loadScanFile(file);
+      const loaded = await loadScanFile(file);
       const path = await copyScanIntoProject(dir, file);
       const ref: ScanRef = {
         id: newId(), name: path.split('/').pop()!, file: path, units: 'mm',
-        addedAt: new Date().toISOString(), stats,
+        addedAt: new Date().toISOString(), stats: loaded.stats,
       };
-      set({ scan: { id: ref.id, name: ref.name, mesh, stats } });
+      set({ scan: { id: ref.id, name: ref.name, ...loaded }, selectedRegion: null });
       await persist({ ...project, scans: [...project.scans, ref] });
     }),
 
@@ -99,15 +114,60 @@ export const useApp = create<State>((set, get) => {
     removeScan: async (id) => {
       const { project, scan } = get();
       if (!project) return;
-      if (scan?.id === id) set({ scan: null });
+      if (scan?.id === id) set({ scan: null, selectedRegion: null });
       await persist({ ...project, scans: project.scans.filter((s) => s.id !== id) });
     },
 
     quickView: (file) => run(`Reading ${file.name}…`, async () => {
-      const { mesh, stats } = await loadScanFile(file);
-      set({ scan: { id: 'quick', name: file.name, mesh, stats } });
+      set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
+    setStep: (step) => set({ step, openSurfaceId: null }),
+    selectRegion: (id) => set({ selectedRegion: id }),
+
+    addSurfaceFromRegion: async () => {
+      const { project, scan, selectedRegion } = get();
+      if (!project || !scan || selectedRegion === null) return;
+      const region = scan.regions[selectedRegion];
+      try {
+        const name = uniqueName(`Surface ${project.surfaces.length + 1}`, project.surfaces.map((s) => s.name));
+        const surface = createSurface({ id: newId(), name, scanId: scan.id, region, raw: region.raw });
+        set({ openSurfaceId: surface.id, selectedRegion: null });
+        await persist({ ...project, surfaces: [...project.surfaces, surface] });
+      } catch (e) {
+        set({ error: `This area could not be turned into a surface: ${message(e)}` });
+      }
+    },
+
+    openSurface: (id) => set({ openSurfaceId: id }),
+
+    updateSurface: async (surface, save = true) => {
+      const { project } = get();
+      if (!project) return;
+      const next = { ...project, surfaces: project.surfaces.map((s) => (s.id === surface.id ? surface : s)) };
+      if (save) await persist(next); else set({ project: next });
+    },
+
+    deleteSurface: async (id) => {
+      const { project, openSurfaceId } = get();
+      if (!project) return;
+      if (openSurfaceId === id) set({ openSurfaceId: null });
+      await persist({ ...project, surfaces: project.surfaces.filter((s) => s.id !== id) });
+    },
+
+    exportSurfaceDxf: async (id) => {
+      const { project, dir } = get();
+      const surface = project?.surfaces.find((s) => s.id === id);
+      if (!surface || !dir) return;
+      try {
+        const path = await writeExport(dir, `${surface.name}.dxf`, surfaceToDxf(surface));
+        set({ notice: `Saved to ${path} in the project folder.` });
+      } catch (e) {
+        set({ error: `The DXF could not be saved: ${message(e)}` });
+      }
+    },
+
     clearError: () => set({ error: null }),
+    clearNotice: () => set({ notice: null }),
   };
 });

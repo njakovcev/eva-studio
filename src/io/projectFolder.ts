@@ -79,6 +79,14 @@ export async function copyScanIntoProject(dir: FileSystemDirectoryHandle, file: 
   return `${FOLDERS.scans}/${name}`;
 }
 
+/** Writes a text file into export/ (replacing an older export of the same name) and returns its path. */
+export async function writeExport(dir: FileSystemDirectoryHandle, fileName: string, text: string): Promise<string> {
+  const folder = await dir.getDirectoryHandle(FOLDERS.export, { create: true });
+  const name = safeFileName(fileName);
+  await writeText(folder, name, text);
+  return `${FOLDERS.export}/${name}`;
+}
+
 export async function readProjectFile(dir: FileSystemDirectoryHandle, path: string): Promise<File> {
   const parts = path.split('/');
   let d = dir;

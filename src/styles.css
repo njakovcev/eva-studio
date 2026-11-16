@@ -71,3 +71,29 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 .spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 720px) { .work { flex-direction: column; } .side { width: auto; border-right: none; border-bottom: 1px solid var(--line); max-height: 40%; } .steps { display: none; } }
+
+/* v0.2 – surfaces */
+.pane { flex: 1; min-width: 0; display: flex; }
+.pane--hidden { display: none; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10; background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .25); }
+.notice--warn { border-left-color: #c77700; margin: 0; font-size: 13px; }
+button.danger { color: var(--danger); }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.field input[type='range'] { padding: 0; }
+.side__actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.sides { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+.sides th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 2px 0; }
+.sides td { padding: 2px 0; border-top: 1px solid var(--line); }
+.sides tr.warn td:last-child { color: #c77700; font-weight: 600; }
+
+.editor { flex: 1; min-width: 0; position: relative; background: var(--canvas); }
+.editor svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; user-select: none; }
+.ed-raw { fill: color-mix(in srgb, var(--muted) 10%, transparent); stroke: var(--muted); }
+.ed-marker { fill: none; stroke: var(--ok); }
+.ed-hole { fill: none; stroke: #c77700; }
+.ed-clean { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-linejoin: round; }
+.ed-label { fill: var(--text); stroke: var(--canvas); paint-order: stroke; font-variant-numeric: tabular-nums; pointer-events: none; }
+.ed-corner { fill: var(--panel); stroke: var(--accent); cursor: move; }
+.ed-corner.manual { fill: var(--accent); }
+.ed-corner.on { stroke: #ff8c1a; }
+.editor .viewer__hint { left: 12px; right: 12px; text-align: right; }

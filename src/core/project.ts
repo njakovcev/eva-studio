@@ -8,6 +8,7 @@
  *    adding a step to `migrate`, so that old projects always open.
  */
 import type { MeshStats } from './mesh';
+import type { Surface } from './surface';
 
 export const FORMAT_VERSION = 1;
 export const PROJECT_FILE = 'project.json';
@@ -53,8 +54,8 @@ export interface Project {
   };
   settings: ProjectSettings;
   scans: ScanRef[];
-  /** Flat surfaces picked from scans (v0.2). */
-  surfaces: unknown[];
+  /** Flat surfaces picked from scans. */
+  surfaces: Surface[];
   /** EVA panels laid on surfaces (v0.3). */
   panels: unknown[];
   /** One design per surface (v0.4). */

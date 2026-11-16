@@ -4,6 +4,15 @@ import type { MeshData } from '../core/obj';
 
 export type StandardView = 'fit' | 'top' | 'front' | 'side';
 
+const PLAIN: [number, number, number] = [0.62, 0.70, 0.78];
+const DIMMED: [number, number, number] = [0.50, 0.53, 0.57];
+const SELECTED: [number, number, number] = [1.0, 0.55, 0.1];
+/** soft tints for detected flat areas */
+const TINTS: [number, number, number][] = [
+  [0.36, 0.62, 0.90], [0.40, 0.76, 0.56], [0.78, 0.60, 0.88], [0.90, 0.76, 0.40],
+  [0.45, 0.80, 0.82], [0.90, 0.58, 0.62], [0.62, 0.72, 0.42], [0.60, 0.62, 0.92],
+];
+
 /**
  * 3D view of a scan. Draws only when something changes (no idle GPU use),
  * so it is light on a laptop battery.
@@ -15,10 +24,20 @@ export class Viewer3D {
   private controls: TrackballControls;
   private light = new THREE.DirectionalLight(0xffffff, 2.2);
   private model: THREE.Mesh | null = null;
+  private data: MeshData | null = null;
+  private labels: Int32Array | null = null;
+  private showAreas = false;
+  private selected: number | null = null;
   private center = new THREE.Vector3();
   private radius = 1000;
   private frame = 0;
+  private needsRender = true;
   private resizeObserver: ResizeObserver;
+  private raycaster = new THREE.Raycaster();
+  private down: { x: number; y: number } | null = null;
+
+  /** called with the flat-area id under a click, or -1 */
+  onPick: ((region: number) => void) | null = null;
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -37,33 +56,87 @@ export class Viewer3D {
     this.controls.staticMoving = true;
     this.controls.addEventListener('change', () => this.requestRender());
 
+    // a click (press and release without moving) picks; a drag rotates
+    const el = this.renderer.domElement;
+    el.addEventListener('pointerdown', (e) => { this.down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; });
+    el.addEventListener('pointerup', (e) => {
+      const d = this.down; this.down = null;
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+      this.pick(e.clientX, e.clientY);
+    });
+
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
     this.resize();
     this.loop();
   }
 
-  setMesh(data: MeshData | null) {
+  setScan(data: MeshData | null, labels: Int32Array | null) {
+    if (data === this.data) return;
     if (this.model) {
       this.scene.remove(this.model);
       this.model.geometry.dispose();
       (this.model.material as THREE.Material).dispose();
       this.model = null;
     }
+    this.data = data; this.labels = labels; this.selected = null;
     if (data) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(data.positions.length), 3));
       g.setIndex(new THREE.BufferAttribute(data.indices, 1));
       g.computeVertexNormals();
       g.computeBoundingSphere();
-      const material = new THREE.MeshStandardMaterial({ color: 0x9fb3c8, roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
+      const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
       this.model = new THREE.Mesh(g, material);
       this.scene.add(this.model);
       this.center.copy(g.boundingSphere!.center);
       this.radius = Math.max(g.boundingSphere!.radius, 1);
+      this.paint();
       this.setView('fit');
     }
     this.requestRender();
+  }
+
+  /** Colour the detected flat areas (true) or show the scan plain (false). */
+  setShowAreas(show: boolean) { if (show !== this.showAreas) { this.showAreas = show; this.paint(); } }
+  setSelected(region: number | null) { if (region !== this.selected) { this.selected = region; this.paint(); } }
+
+  private paint() {
+    if (!this.model || !this.data) return;
+    const colors = this.model.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const c = colors.array as Float32Array, ix = this.data.indices, labels = this.labels;
+    const put = (v: number, rgb: [number, number, number]) => { c[v * 3] = rgb[0]; c[v * 3 + 1] = rgb[1]; c[v * 3 + 2] = rgb[2]; };
+    const nF = ix.length / 3;
+    if (!this.showAreas || !labels) {
+      for (let v = 0; v < c.length / 3; v++) put(v, PLAIN);
+    } else {
+      // two passes so that area colours win over the grey in-between at shared points
+      for (let pass = 0; pass < 2; pass++) {
+        for (let f = 0; f < nF; f++) {
+          const l = labels[f];
+          if ((pass === 0) !== (l < 0)) continue;
+          const rgb = l < 0 ? DIMMED : l === this.selected ? SELECTED : TINTS[l % TINTS.length];
+          put(ix[f * 3], rgb); put(ix[f * 3 + 1], rgb); put(ix[f * 3 + 2], rgb);
+        }
+      }
+      if (this.selected !== null) {
+        for (let f = 0; f < nF; f++) {
+          if (labels[f] === this.selected) { put(ix[f * 3], SELECTED); put(ix[f * 3 + 1], SELECTED); put(ix[f * 3 + 2], SELECTED); }
+        }
+      }
+    }
+    colors.needsUpdate = true;
+    this.requestRender();
+  }
+
+  private pick(clientX: number, clientY: number) {
+    if (!this.model || !this.labels || !this.onPick) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.model, false)[0];
+    this.onPick(hit && hit.faceIndex != null ? this.labels[hit.faceIndex] : -1);
   }
 
   setView(view: StandardView) {
@@ -73,6 +146,15 @@ export class Viewer3D {
     else if (view === 'front') dir.set(0, -1, 0);
     else if (view === 'side') dir.set(1, 0, 0);
     else dir.set(0.55, -0.75, 0.6).normalize();
+    this.lookFrom(dir, up);
+  }
+
+  /** Look straight at a flat area (against its normal). */
+  faceDirection(normal: ArrayLike<number>, upHint: ArrayLike<number>) {
+    this.lookFrom(new THREE.Vector3(normal[0], normal[1], normal[2]).normalize(), new THREE.Vector3(upHint[0], upHint[1], upHint[2]));
+  }
+
+  private lookFrom(dir: THREE.Vector3, up: THREE.Vector3) {
     const distance = (this.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.05;
     this.camera.up.copy(up);
     this.camera.position.copy(this.center).addScaledVector(dir, distance);
@@ -86,7 +168,6 @@ export class Viewer3D {
     this.requestRender();
   }
 
-  private needsRender = true;
   requestRender() { this.needsRender = true; }
 
   private loop = () => {
@@ -110,7 +191,7 @@ export class Viewer3D {
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
     this.controls.dispose();
-    this.setMesh(null);
+    this.setScan(null, null);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
