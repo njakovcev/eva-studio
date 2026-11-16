@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { nearestEdgeIndex, outlinePolygon, sidePath } from '../core/cleanOutline';
 import { newId } from '../core/project';
-import { bounds, distToSegment } from '../core/poly';
-import { MARKER_MAX_AREA, checkLength, snapToCorner, withAnchors, type Surface } from '../core/surface';
+import { bounds, distToSegment, slideAlongSides } from '../core/poly';
+import { MARKER_MAX_AREA, checkLength, removeSideExtend, snapToCorner, withAnchors, type Surface } from '../core/surface';
+import type { Vec2 } from '../core/vec';
 import { useApp } from '../store';
 
 interface View { x: number; y: number; w: number; h: number }
@@ -32,7 +33,8 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState<View | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
-  const drag = useRef<{ kind: 'pan'; x: number; y: number; view: View } | { kind: 'corner'; x: number; y: number; index: number; moved: boolean } | null>(null);
+  const [selectedSide, setSelectedSide] = useState<number | null>(null);
+  const drag = useRef<{ kind: 'pan'; x: number; y: number; view: View } | { kind: 'corner'; x: number; y: number; index: number; moved: boolean; from: Vec2; prev: Vec2; next: Vec2 } | null>(null);
   /** last quick press without movement, to recognise a double-click ourselves */
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
   const latest = useRef(surface);
@@ -45,7 +47,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
     // refit only when another surface is opened
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surface.id]);
-  useEffect(() => { setView(fit); setSelected(null); }, [fit]);
+  useEffect(() => { setView(fit); setSelected(null); setSelectedSide(null); }, [fit]);
 
   // mm per screen pixel, so handles and line widths keep the same size on screen at any zoom
   const [px, setPx] = useState(1);
@@ -97,6 +99,19 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
     void updateSurface(withAnchors(surface, [...anchors, { at, manual: [x, y] }]));
   };
 
+  const sideAt = (x: number, y: number) => {
+    let side = -1, sideD = 12 * px;
+    corners.forEach((_, i) => { const dd = distToPath(x, y, sidePath(surface.outline, i)); if (dd < sideD) { sideD = dd; side = i; } });
+    return side;
+  };
+
+  /** Removes a side by extending its two neighbours until they meet. */
+  const removeSide = (i: number) => {
+    setSelectedSide(null);
+    try { void updateSurface(removeSideExtend(surface, i)); }
+    catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); }
+  };
+
   const doubleClick = (e: { clientX: number; clientY: number }) => {
     const [x, y] = toPlane(e);
     let corner = -1, cornerD = 9 * px;
@@ -123,9 +138,9 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
   // Delete key removes the selected corner
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null && !(e.target instanceof HTMLInputElement)) {
-        e.preventDefault(); removeCorner(selected);
-      }
+      if ((e.key !== 'Delete' && e.key !== 'Backspace') || e.target instanceof HTMLInputElement) return;
+      if (selected !== null) { e.preventDefault(); removeCorner(selected); }
+      else if (selectedSide !== null) { e.preventDefault(); removeSide(selectedSide); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -142,7 +157,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
           if ((e.target as Element).closest('[data-corner]')) return;
           (e.currentTarget as Element).setPointerCapture(e.pointerId);
           drag.current = { kind: 'pan', x: e.clientX, y: e.clientY, view };
-          setSelected(null);
+          setSelected(null); setSelectedSide(null);
         }}
         onPointerMove={(e) => {
           const d = drag.current; if (!d) return;
@@ -152,7 +167,9 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
             if (measuring || (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3)) return;
             d.moved = true;
             const s = latest.current;
-            const next = s.outline.anchors.map((a, k) => (k === d.index ? { ...a, manual: toPlane(e) } : a));
+            // Shift: the corner only slides along one of its two sides, so that side keeps its direction
+            const to = e.shiftKey ? slideAlongSides(d.from, d.prev, d.next, toPlane(e)) : toPlane(e);
+            const next = s.outline.anchors.map((a, k) => (k === d.index ? { ...a, manual: to } : a));
             void updateSurface(withAnchors(s, next), false);
           }
         }}
@@ -170,6 +187,8 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
             doubleClick(e);
           } else {
             lastTap.current = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+            // a single click on a side selects it (Delete then removes it)
+            if (d.kind === 'pan' && !measuring) { const [x, y] = toPlane(e); const side = sideAt(x, y); setSelectedSide(side >= 0 ? side : null); }
           }
         }}
       >
@@ -178,6 +197,9 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
           <path key={i} className={h.area <= MARKER_MAX_AREA ? 'ed-marker' : 'ed-hole'} d={path(h.points)} strokeWidth={1 * px} strokeDasharray={`${3 * px} ${3 * px}`} />
         ))}
         <path className="ed-clean" d={path(outlinePolygon(surface.outline))} strokeWidth={2 * px} />
+        {selectedSide !== null && selectedSide < corners.length && (
+          <path className="pe-focus" strokeWidth={5 * px} d={sidePath(surface.outline, selectedSide).reduce((d, v, k, a) => (k % 2 ? d : `${d}${k ? 'L' : 'M'}${v},${-a[k + 1]}`), '')} />
+        )}
         {corners.map((_, i) => {
           const sp = sidePath(surface.outline, i);
           const mid = Math.floor(sp.length / 4) * 2; // middle point of the side (for a straight side: between its two corners)
@@ -208,8 +230,9 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
             onPointerDown={(e) => {
               e.stopPropagation();
               svg.current!.setPointerCapture(e.pointerId);
-              drag.current = { kind: 'corner', x: e.clientX, y: e.clientY, index: i, moved: false };
-              setSelected(i);
+              const m = corners.length;
+              drag.current = { kind: 'corner', x: e.clientX, y: e.clientY, index: i, moved: false, from: c, prev: corners[(i - 1 + m) % m], next: corners[(i + 1) % m] };
+              setSelected(i); setSelectedSide(null);
             }}
           />
         ))}
@@ -217,7 +240,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
       <div className="viewer__views"><button onClick={() => setView(fit)}>Fit</button></div>
       {measuring && <div className="viewer__busy">{checkFirst === null ? 'Click the first corner of the measurement' : 'Now click the second corner'}</div>}
       <div className="viewer__hint">
-        Drag a corner to move it · Double-click a corner to remove it · Double-click a side to add a corner · Wheel: zoom · Drag background: move
+        Drag a corner to move it (Shift: slide along its side) · Double-click a corner to remove it · Double-click a side to add a corner · Click a side + Delete: remove it and extend its neighbours until they meet
       </div>
     </div>
   );

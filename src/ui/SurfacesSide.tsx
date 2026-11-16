@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { checkLength, recleanSurface, lengthErrorFromBulge, surfaceArea, withAnchors, MARKER_MAX_AREA, type Surface } from '../core/surface';
+import { checkLength, recleanSurface, lengthErrorFromBulge, removeSideExtend, surfaceArea, withAnchors, MARKER_MAX_AREA, type Surface } from '../core/surface';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 
@@ -102,7 +102,7 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
 
       <h3>Sides ({corners.length})</h3>
       <table className="sides">
-        <thead><tr><th>#</th><th>Length</th><th>Scan differs by</th><th>Curved</th></tr></thead>
+        <thead><tr><th>#</th><th>Length</th><th>Scan differs by</th><th>Curved</th><th></th></tr></thead>
         <tbody>
           {sides.map((s, i) => (
             <tr key={i} className={s.maxDeviation > 5 ? 'warn' : ''}>
@@ -113,10 +113,17 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
                   onChange={() => void updateSurface(withAnchors(surface, anchors.map((a, k) => (k === i ? { ...a, curve: !a.curve } : a))))}
                 />
               </td>
+              <td>
+                <button
+                  className="ghost" title="Remove this side: its two neighbours are extended until they meet"
+                  onClick={() => { try { void updateSurface(removeSideExtend(surface, i)); } catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); } }}
+                >×</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <small>× removes a side and extends its two neighbours until they meet (for example to cut off a protrusion without moving the sides next to it).</small>
       <small>“Scan differs by” over 5 mm means the scanned edge does not follow that side: tick Curved if the real edge is a curve, or add a corner.</small>
 
       <h3>Check against the boat</h3>

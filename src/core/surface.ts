@@ -2,7 +2,7 @@
 import { autoClean, DEFAULT_CLEAN, outlinePolygon, resolveCorners, type Anchor, type CleanOptions, type SideInfo } from './cleanOutline';
 import { writeDxf } from './dxf';
 import type { RawOutline } from './outline';
-import { bounds, polygonArea } from './poly';
+import { bounds, extendToMeet, polygonArea } from './poly';
 import type { Plane, Region } from './segment';
 import type { Vec2 } from './vec';
 
@@ -76,6 +76,24 @@ export function recleanSurface(s: Surface, options: CleanOptions): Surface {
 export function withAnchors(s: Surface, anchors: Anchor[]): Surface {
   const sorted = [...anchors].sort((a, b) => a.at - b.at);
   return { ...s, outline: { ...s.outline, anchors: sorted, ...resolveCorners(s.outline.edge, sorted, s.outline.options.tolerance) } };
+}
+
+/**
+ * Removes one side (for example the tip of a protrusion) by extending the two neighbouring
+ * sides until they meet. The neighbours stay exactly on their lines; only their length changes.
+ */
+export function removeSideExtend(s: Surface, i: number): Surface {
+  const { corners, anchors } = s.outline, n = corners.length;
+  if (n < 4) throw new Error('An outline needs at least three sides.');
+  const before = (i - 1 + n) % n, after = (i + 1) % n, afterEnd = (i + 2) % n;
+  if (anchors[before].curve || anchors[after].curve) throw new Error('This works when both neighbouring sides are straight. Untick "Curved" on them first.');
+  const meet = extendToMeet(corners[before], corners[i], corners[after], corners[afterEnd]);
+  const next = anchors
+    // the far end of the second neighbour is pinned where it is, so that side cannot shift
+    .map((a, k) => (k === afterEnd && k !== before ? { ...a, manual: corners[k] } : a))
+    .map((a, k) => (k === i ? { at: a.at, manual: meet } : a))
+    .filter((_, k) => k !== after);
+  return withAnchors(s, next);
 }
 
 /** The clean outline of a surface as one closed polygon. */

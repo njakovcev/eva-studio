@@ -9,7 +9,7 @@
  */
 import { sidePath } from './cleanOutline';
 import { writeDxf } from './dxf';
-import { bounds, polygonArea } from './poly';
+import { bounds, extendToMeet, polygonArea } from './poly';
 import type { ProjectSettings } from './project';
 import { outlinePolygonOf, type Surface } from './surface';
 import type { Vec2 } from './vec';
@@ -264,6 +264,29 @@ export function removeCorner(panel: Panel, i: number): Panel {
   curves[(i - 1 + n) % n] = null;
   const drop = <T,>(a: T[]) => a.filter((_, k) => k !== i);
   return { ...panel, shape: { corners: drop(panel.shape.corners), curves: drop(curves) }, offsets: drop(panel.offsets), radii: drop(panel.radii) };
+}
+
+/**
+ * Removes one side by extending its two neighbours until they meet (for example to ignore
+ * the tip of a protrusion). The neighbours stay on their lines and keep their offsets.
+ */
+export function removeSide(panel: Panel, i: number): Panel {
+  const { corners, curves } = panel.shape, n = corners.length;
+  if (n < 4) throw new Error('A panel needs at least three sides.');
+  const before = (i - 1 + n) % n, after = (i + 1) % n, afterEnd = (i + 2) % n;
+  if (curves[before] || curves[after]) throw new Error('This works when both neighbouring sides are straight.');
+  const meet = extendToMeet(corners[before], corners[i], corners[after], corners[afterEnd]);
+  // corner i moves to the meeting point; corner i+1 and side i go away
+  const keep = <T,>(a: T[], dropIndex: number) => a.filter((_, k) => k !== dropIndex);
+  const newCorners = corners.map((c, k) => (k === i ? meet : c));
+  const newCurves = curves.slice(); newCurves[i] = curves[after]; // side i is now what side i+1 was
+  const newOffsets = panel.offsets.slice(); newOffsets[i] = panel.offsets[after];
+  return {
+    ...panel,
+    shape: { corners: keep(newCorners, after), curves: keep(newCurves, after) },
+    offsets: keep(newOffsets, after),
+    radii: keep(panel.radii, after),
+  };
 }
 
 /** Adds a corner on a side, at the point of that side nearest to `at`. */

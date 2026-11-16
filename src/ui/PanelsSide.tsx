@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
+import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, removeSide, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { newId } from '../core/project';
 import { useApp } from '../store';
@@ -124,11 +124,17 @@ function PanelDetails({ panel }: { panel: Panel }) {
         <button className="small" onClick={() => void updatePanel({ ...panel, offsets: new Array(n).fill(allOffset) })}>Apply</button>
       </div>
       <table className="sides">
-        <thead><tr><th>Side</th><th>Offset (mm)</th></tr></thead>
+        <thead><tr><th>Side</th><th>Offset (mm)</th><th></th></tr></thead>
         <tbody>
           {panel.offsets.map((v, i) => (
             <tr key={i} className={isOn('side', i) ? 'on' : ''} onMouseEnter={() => setPanelFocus({ kind: 'side', index: i })}>
               <td>S{i + 1}</td><td><NumberField value={v} onCommit={(x) => set('offsets', i, x)} /></td>
+              <td>
+                <button
+                  className="ghost" title="Remove this side: its two neighbours are extended until they meet"
+                  onClick={() => { setPanelFocus(null); try { void updatePanel(removeSide(panel, i)); } catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); } }}
+                >×</button>
+              </td>
             </tr>
           ))}
         </tbody>

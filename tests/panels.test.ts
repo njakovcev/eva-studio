@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCorner, cutLength, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, pointAlongSide, cutoutWarnings, setCutoutDistance, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
+import { addCorner, cutLength, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, pointAlongSide, cutoutWarnings, setCutoutDistance, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, removeSide, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
 import { bounds, polygonArea } from '../src/core/poly';
 import type { Vec2 } from '../src/core/vec';
 
@@ -87,6 +87,19 @@ describe('reshaping', () => {
     expect(p.shape.corners).toEqual(rect);
     expect(p.offsets.length).toBe(4);
     near(polygonArea(cutOutline(p).flat), 970 * 570 - (4 - Math.PI) * 400);
+  });
+
+  it('removing a side extends its neighbours until they meet, without moving them', () => {
+    // a rectangle whose bottom-right corner has been cut off by a 200 × 100 chamfer
+    const chamfered: Vec2[] = [[0, 0], [800, 0], [1000, 100], [1000, 600], [0, 600]];
+    const p = removeSide(panel(chamfered, [10, 20, 30, 40, 50], [1, 2, 3, 4, 5]), 1);
+    expect(p.shape.corners).toEqual(rect); // bottom and right side extended to the square corner
+    expect(p.offsets).toEqual([10, 30, 40, 50]); // every remaining side keeps its own offset
+    expect(p.radii).toEqual([1, 2, 4, 5]);
+    // a tip sticking out: removing its short side cuts the tip off along the neighbours' lines
+    const tip: Vec2[] = [[0, 0], [1000, 0], [1000, 300], [1100, 300], [1000, 600], [0, 600]];
+    expect(() => removeSide(panel(tip, 0, 0), 2)).toThrow(/parallel|away/);
+    expect(() => removeSide(panel(rect, 0, 0), 0)).toThrow(/parallel/);
   });
 
   it('moves and adds corners', () => {

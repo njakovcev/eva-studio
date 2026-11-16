@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { outlinePolygon, sidePath } from '../core/cleanOutline';
 import {
-  addCorner, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, moveCorner, pointAlongSide, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
+  addCorner, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, moveCorner, pointAlongSide, removeSide, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
   type EdgePoint, type Panel,
 } from '../core/panel';
-import { bounds } from '../core/poly';
+import { bounds, slideAlongSides } from '../core/poly';
 import { MARKER_MAX_AREA, outlinePolygonOf, type Surface } from '../core/surface';
 import type { Vec2 } from '../core/vec';
 import { useApp } from '../store';
@@ -12,7 +12,7 @@ import { distToPath, svgPath, usePanZoom, type View } from './usePanZoom';
 
 type Drag =
   | { kind: 'pan'; x: number; y: number; view: View }
-  | { kind: 'corner'; x: number; y: number; index: number; moved: boolean }
+  | { kind: 'corner'; x: number; y: number; index: number; moved: boolean; from: Vec2; prev: Vec2; next: Vec2 }
   | { kind: 'cutout'; x: number; y: number; index: number; moved: boolean; grab: Vec2 };
 
 /**
@@ -128,6 +128,10 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
       if (e.key === 'Escape' && splitting) { setSplitting(false); return; }
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (focus?.kind === 'corner' && corners.length > 3) { e.preventDefault(); setFocus(null); void updatePanel(removeCorner(panel, focus.index)); }
+      if (focus?.kind === 'side') {
+        e.preventDefault(); setFocus(null);
+        try { void updatePanel(removeSide(panel, focus.index)); } catch (err) { useApp.setState({ error: err instanceof Error ? err.message : String(err) }); }
+      }
       if (focus?.kind === 'cutout') { e.preventDefault(); setFocus(null); void updatePanel({ ...panel, cutouts: (panel.cutouts ?? []).filter((_, k) => k !== focus.index) }); }
     };
     window.addEventListener('keydown', onKey);
@@ -145,7 +149,10 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
           (e.currentTarget as Element).setPointerCapture(e.pointerId);
           const [x, y] = toPlane(e);
           const hit = splitting ? null : nearest(x, y);
-          if (hit?.kind === 'corner') drag.current = { kind: 'corner', x: e.clientX, y: e.clientY, index: hit.index, moved: false };
+          if (hit?.kind === 'corner') {
+            const m = corners.length, i = hit.index;
+            drag.current = { kind: 'corner', x: e.clientX, y: e.clientY, index: i, moved: false, from: corners[i], prev: corners[(i - 1 + m) % m], next: corners[(i + 1) % m] };
+          }
           else if (hit?.kind === 'cutout') {
             const c = panel.cutouts![hit.index].center;
             drag.current = { kind: 'cutout', x: e.clientX, y: e.clientY, index: hit.index, moved: false, grab: [x - c[0], y - c[1]] };
@@ -159,7 +166,8 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
           if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3) return;
           d.moved = true;
           const p = latest.current, [x, y] = toPlane(e);
-          if (d.kind === 'corner') void updatePanel(moveCorner(p, d.index, [x, y]), false);
+          // Shift: the corner only slides along one of its two sides, so that side keeps its direction
+          if (d.kind === 'corner') void updatePanel(moveCorner(p, d.index, e.shiftKey ? slideAlongSides(d.from, d.prev, d.next, [x, y]) : [x, y]), false);
           else void updatePanel({ ...p, cutouts: (p.cutouts ?? []).map((c, k) => (k === d.index ? { ...c, center: [x - d.grab[0], y - d.grab[1]] as Vec2 } : c)) }, false);
         }}
         onPointerUp={(e) => {
@@ -241,7 +249,7 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
       </div>
       {splitting && <div className="viewer__busy">{splitFrom ? 'Click where the cut ends (it snaps to a square cut and to corners) · Esc to cancel' : 'Click on the panel edge where the cut starts · the numbers are the distances to both ends of that side · Esc to cancel'}</div>}
       <div className="viewer__hint">
-        Drag a corner to reshape · Double-click a corner to remove it · Double-click a side to add a corner · Drag an opening to move it · Wheel: zoom
+        Drag a corner to reshape (Shift: slide along its side) · Double-click a corner to remove it · Double-click a side to add a corner · Click a side + Delete: remove it and extend its neighbours until they meet
       </div>
     </div>
   );

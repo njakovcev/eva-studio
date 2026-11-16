@@ -4,7 +4,8 @@ import { segmentFlatRegions } from '../src/core/segment';
 import { extractOutline } from '../src/core/outline';
 import { autoClean, bridgeGaps, nearestEdgeIndex, outlinePolygon, resolveCorners } from '../src/core/cleanOutline';
 import { polygonArea } from '../src/core/poly';
-import { checkLength, createSurface, surfaceToDxf, withAnchors } from '../src/core/surface';
+import { checkLength, createSurface, removeSideExtend, surfaceToDxf, withAnchors } from '../src/core/surface';
+import { extendToMeet, slideAlongSides } from '../src/core/poly';
 import { eigenSymmetric3 } from '../src/core/vec';
 import { computeOrientation } from '../src/core/orientation';
 
@@ -177,5 +178,35 @@ describe('tape checks', () => {
     const [a, , c] = s.outline.corners;
     const check = { id: 'c', a, b: c, measured: 1166 };
     expect(checkLength(s, check)).toBeCloseTo(Math.hypot(1000, 600), 0);
+  });
+});
+
+describe('alignment tools', () => {
+  it('extends two sides until they meet', () => {
+    expect(extendToMeet([0, 0], [800, 0], [1000, 100], [1000, 600])).toEqual([1000, 0]);
+    expect(() => extendToMeet([0, 0], [800, 0], [0, 100], [800, 100])).toThrow(/parallel/);
+  });
+
+  it('slides a corner along one of its sides', () => {
+    expect(slideAlongSides([1000, 0], [0, 0], [1000, 600], [1100, 37])).toEqual([1100, 0]); // nearer the bottom line
+    expect(slideAlongSides([1000, 0], [0, 0], [1000, 600], [1012, 200])).toEqual([1000, 200]); // nearer the right line
+  });
+
+  it('removes the tip of a protrusion from a scanned outline and leaves the other sides where they were', () => {
+    // 1000 × 600 scan outline, a point every 5 mm, with the bottom-right corner cut off (chamfer 200 × 100)
+    const pts: number[] = [];
+    for (let x = 0; x < 800; x += 5) pts.push(x, 0);
+    for (let k = 0; k < 40; k++) pts.push(800 + k * 5, k * 2.5);
+    for (let y = 100; y < 600; y += 5) pts.push(1000, y);
+    for (let x = 1000; x > 0; x -= 5) pts.push(x, 600);
+    for (let y = 600; y > 0; y -= 5) pts.push(0, y);
+    const region = { id: 0, triangles: 0, area: 0, plane: { origin: [0, 0, 0], normal: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] }, flatness: { rms: 0, max: 0 } } as never;
+    const s = createSurface({ id: 's', name: 'S', scanId: 'x', region, raw: { outer: pts, holes: [] } });
+    expect(s.outline.corners.length).toBe(5);
+    const chamfer = s.outline.sides.findIndex((x) => Math.abs(x.length - Math.hypot(200, 100)) < 2);
+    const fixed = removeSideExtend(s, chamfer);
+    expect(fixed.outline.corners.length).toBe(4);
+    const key = (c: number[]) => c.map((v) => Math.round(v)).join(',');
+    expect(fixed.outline.corners.map(key).sort()).toEqual(['0,0', '0,600', '1000,0', '1000,600'].sort());
   });
 });
