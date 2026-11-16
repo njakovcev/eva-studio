@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData } from '../src/core/obj';
 import { segmentFlatRegions } from '../src/core/segment';
 import { extractOutline } from '../src/core/outline';
-import { autoClean, bridgeGaps, nearestEdgeIndex, resolveCorners } from '../src/core/cleanOutline';
+import { autoClean, bridgeGaps, nearestEdgeIndex, outlinePolygon, resolveCorners } from '../src/core/cleanOutline';
 import { polygonArea } from '../src/core/poly';
-import { createSurface, surfaceToDxf, withAnchors } from '../src/core/surface';
+import { checkLength, createSurface, surfaceToDxf, withAnchors } from '../src/core/surface';
 import { eigenSymmetric3 } from '../src/core/vec';
 import { computeOrientation } from '../src/core/orientation';
 
@@ -137,5 +137,45 @@ describe('scan orientation', () => {
     const flipped = { positions: mesh.positions.map((v, i) => (i % 3 === 0 ? v : -v)), indices: mesh.indices };
     const o2 = computeOrientation(flipped, segmentFlatRegions(flipped).regions);
     expect(o2.up[2]).toBeLessThan(-0.99);
+  });
+});
+
+describe('curved sides', () => {
+  // 600 × 300 with the top side bulging out as a circular arc (80 mm high), a slightly noisy point every 4 mm
+  const R = (300 * 300 + 80 * 80) / (2 * 80), cy = 300 + 80 - R;
+  let seed = 7; const noise = () => { seed = (seed * 16807) % 2147483647; return (seed / 2147483647 - 0.5) * 0.8; };
+  const pts: number[] = [];
+  for (let x = 0; x < 600; x += 4) pts.push(x, noise());
+  for (let y = 0; y < 300; y += 4) pts.push(600 + noise(), y);
+  const half = Math.asin(300 / R);
+  for (let k = 0; k < 150; k++) { const a = Math.PI / 2 - half + (2 * half * k) / 150; pts.push(300 + (R + noise()) * Math.cos(a), cy + (R + noise()) * Math.sin(a)); }
+  for (let y = 300; y > 0; y -= 4) pts.push(noise(), y);
+  const theta = 2 * half, expected = 600 * 300 + (R * R / 2) * (theta - Math.sin(theta));
+
+  const anchors = [[0, 0], [600, 0], [600, 300], [0, 300]].map(([x, y]) => ({ at: nearestEdgeIndex(pts, x, y) })).sort((a, b) => a.at - b.at);
+  const top = anchors.findIndex((a) => Math.abs(pts[a.at * 2] - 600) < 5 && Math.abs(pts[a.at * 2 + 1] - 300) < 5);
+
+  it('a straight side across an arc is far from the scan; a curved side follows it', () => {
+    const straight = resolveCorners(pts, anchors, 20);
+    expect(straight.sides[top].maxDeviation).toBeGreaterThan(40);
+    const curved = resolveCorners(pts, anchors.map((a, i) => (i === top ? { ...a, curve: true } : a)), 20);
+    expect(curved.sides[top].maxDeviation).toBeLessThan(1.5);
+    expect(curved.curves[top]!.length).toBeGreaterThan(10);
+    const area = Math.abs(polygonAreaOf(outlinePolygon(curved)));
+    expect(Math.abs(area - expected) / expected).toBeLessThan(0.005);
+    expect(curved.sides[top].length).toBeCloseTo(R * theta, -1);
+  });
+});
+
+function polygonAreaOf(p: number[]) { return polygonArea(p); }
+
+describe('tape checks', () => {
+  it('measures between corners and follows them when they move', () => {
+    const mesh = floorAndWall();
+    const seg = segmentFlatRegions(mesh);
+    const s = createSurface({ id: 's', name: 'F', scanId: 'x', region: seg.regions[0], raw: extractOutline(mesh, seg, 0) });
+    const [a, , c] = s.outline.corners;
+    const check = { id: 'c', a, b: c, measured: 1166 };
+    expect(checkLength(s, check)).toBeCloseTo(Math.hypot(1000, 600), 0);
   });
 });

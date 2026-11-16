@@ -18,6 +18,8 @@ export interface Anchor {
   at: number;
   /** set when the user placed this corner by hand */
   manual?: Vec2;
+  /** the side from this corner to the next one follows the scan as a smooth curve instead of a straight line */
+  curve?: boolean;
 }
 
 export interface CleanOptions {
@@ -28,7 +30,12 @@ export interface CleanOptions {
 }
 
 export interface SideInfo { length: number; maxDeviation: number }
-export interface CleanResult { corners: Vec2[]; sides: SideInfo[] }
+export interface CleanResult {
+  corners: Vec2[];
+  sides: SideInfo[];
+  /** for each side: the points between its two corners if it is a curve, otherwise null */
+  curves: (number[] | null)[];
+}
 
 export const DEFAULT_CLEAN: CleanOptions = { tolerance: 20, bridgeWidth: 40 };
 
@@ -168,36 +175,97 @@ function intersect(a: Line, b: Line): Vec2 | null {
   return [a.px + t * a.dx, a.py + t * a.dy];
 }
 
-/** Step 3: final corner positions for a set of anchors. */
+/** Smooths a line of evenly spaced points (Gaussian, about 10 mm), keeping both ends in place. */
+function smooth(pts: number[], spacing: number): number[] {
+  const n = pts.length / 2;
+  const sigma = 10 / spacing, reach = Math.ceil(sigma * 3);
+  if (n < 5) return pts.slice();
+  const weights: number[] = [];
+  for (let k = -reach; k <= reach; k++) weights.push(Math.exp(-(k * k) / (2 * sigma * sigma)));
+  // beyond the ends, continue the line by mirroring it through the end point (keeps end and direction)
+  const at = (i: number, c: number) => (i < 0 ? 2 * pts[c] - pts[Math.min(n - 1, -i) * 2 + c] : i >= n ? 2 * pts[(n - 1) * 2 + c] - pts[Math.max(0, 2 * (n - 1) - i) * 2 + c] : pts[i * 2 + c]);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let x = 0, y = 0, w = 0;
+    for (let k = -reach; k <= reach; k++) { const g = weights[k + reach]; x += at(i + k, 0) * g; y += at(i + k, 1) * g; w += g; }
+    out.push(x / w, y / w);
+  }
+  return out;
+}
+
+/** A curved side: the scanned edge between two corners, smoothed, starting and ending exactly on the corners. */
+function curveBetween(edge: number[], from: number, to: number, a: Vec2, b: Vec2): number[] {
+  const n = edge.length / 2;
+  const sampled = sampleEvery(edge, from, ((to - from + n) % n) + 1, 2);
+  const m = sampled.length / 2;
+  if (m < 5) return [];
+  const sm = smooth(sampled, 2);
+  // slide the ends onto the corners, fading the shift out along the curve
+  const d0x = a[0] - sm[0], d0y = a[1] - sm[1], d1x = b[0] - sm[(m - 1) * 2], d1y = b[1] - sm[(m - 1) * 2 + 1];
+  for (let i = 0; i < m; i++) {
+    const t = i / (m - 1);
+    sm[i * 2] += d0x * (1 - t) + d1x * t; sm[i * 2 + 1] += d0y * (1 - t) + d1y * t;
+  }
+  const kept = simplifyOpenIndices(sm, 0.3);
+  const out: number[] = [];
+  for (const i of kept.slice(1, -1)) out.push(Math.round(sm[i * 2] * 100) / 100, Math.round(sm[i * 2 + 1] * 100) / 100);
+  return out;
+}
+
+function distToPath(x: number, y: number, path: number[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 3 < path.length; i += 2) best = Math.min(best, distToSegment(x, y, path[i], path[i + 1], path[i + 2], path[i + 3]));
+  return best;
+}
+
+/** Step 3: final corner positions (and curved sides) for a set of anchors. */
 export function resolveCorners(edge: number[], anchors: Anchor[], tolerance: number): CleanResult {
   const m = anchors.length;
   if (m < 3) throw new Error('An outline needs at least three corners.');
+  const n = edge.length / 2;
   const raw = (a: Anchor): Vec2 => a.manual ?? [edge[a.at * 2], edge[a.at * 2 + 1]];
-  const lines = anchors.map((a, i) => fitSide(edge, a.at, anchors[(i + 1) % m].at));
+  const lines = anchors.map((a, i) => (a.curve ? null : fitSide(edge, a.at, anchors[(i + 1) % m].at)));
   const corners = anchors.map((a, i): Vec2 => {
     if (a.manual) return a.manual;
     const before = lines[(i - 1 + m) % m], after = lines[i];
     const here = raw(a);
-    if (!before.ok || !after.ok) return here;
+    // next to a curved side there is no second straight line to meet: the corner stays on the scan
+    if (!before || !after || !before.ok || !after.ok) return here;
     const x = intersect(before, after);
     // if the lines meet far from where the scan turns, trust the scan point
     if (!x || Math.hypot(x[0] - here[0], x[1] - here[1]) > Math.max(3 * tolerance, 40)) return here;
     return x;
   });
-  const n = edge.length / 2;
+  const curves = anchors.map((a, i) => (a.curve ? curveBetween(edge, a.at, anchors[(i + 1) % m].at, corners[i], corners[(i + 1) % m]) : null));
   const sides = corners.map((c, i): SideInfo => {
     const d = corners[(i + 1) % m];
+    const path = [c[0], c[1], ...(curves[i] ?? []), d[0], d[1]];
+    let length = 0;
+    for (let k = 0; k + 3 < path.length; k += 2) length += Math.hypot(path[k + 2] - path[k], path[k + 3] - path[k + 1]);
     // how far the scanned edge strays from this side (middle part only)
     const from = anchors[i].at, count = ((anchors[(i + 1) % m].at - from + n) % n) + 1;
     const pts = sampleEvery(edge, from, count, 2);
     const trim = Math.floor((pts.length / 2) * 0.1);
     const dists: number[] = [];
-    for (let k = trim; k < pts.length / 2 - trim; k++) dists.push(distToSegment(pts[k * 2], pts[k * 2 + 1], c[0], c[1], d[0], d[1]));
+    for (let k = trim; k < pts.length / 2 - trim; k++) dists.push(distToPath(pts[k * 2], pts[k * 2 + 1], path));
     dists.sort((p, q) => p - q);
     const typical = dists.length ? dists[Math.min(dists.length - 1, Math.floor(dists.length * 0.9))] : 0;
-    return { length: Math.hypot(d[0] - c[0], d[1] - c[1]), maxDeviation: typical };
+    return { length, maxDeviation: typical };
   });
-  return { corners, sides };
+  return { corners, sides, curves };
+}
+
+/** The points of one side, from its corner to the next corner (inclusive). */
+export function sidePath(result: { corners: Vec2[]; curves?: (number[] | null)[] }, i: number): number[] {
+  const c = result.corners[i], d = result.corners[(i + 1) % result.corners.length];
+  return [c[0], c[1], ...(result.curves?.[i] ?? []), d[0], d[1]];
+}
+
+/** The whole outline as one closed polygon (corners plus the points of curved sides). */
+export function outlinePolygon(result: { corners: Vec2[]; curves?: (number[] | null)[] }): number[] {
+  const out: number[] = [];
+  result.corners.forEach((c, i) => { out.push(c[0], c[1], ...(result.curves?.[i] ?? [])); });
+  return out;
 }
 
 /** Index of the scan-edge point nearest to (x, y). */

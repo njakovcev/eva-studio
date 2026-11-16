@@ -1,5 +1,5 @@
 /** A flat surface of the boat, picked from a scan and stored in the project. */
-import { autoClean, DEFAULT_CLEAN, resolveCorners, type Anchor, type CleanOptions, type SideInfo } from './cleanOutline';
+import { autoClean, DEFAULT_CLEAN, outlinePolygon, resolveCorners, type Anchor, type CleanOptions, type SideInfo } from './cleanOutline';
 import { writeDxf } from './dxf';
 import type { RawOutline } from './outline';
 import { bounds, polygonArea } from './poly';
@@ -25,8 +25,33 @@ export interface Surface {
     /** final clean corners, counter-clockwise */
     corners: Vec2[];
     sides: SideInfo[];
+    /** points of curved sides (see cleanOutline); missing in projects saved before curves existed */
+    curves?: (number[] | null)[];
   };
+  /** tape measurements taken on the boat, to check the drawing against reality */
+  checks?: Check[];
   createdAt: string;
+}
+
+export interface Check {
+  id: string;
+  /** the two measured points, in plane coordinates (mm) */
+  a: Vec2;
+  b: Vec2;
+  /** what the tape showed on the boat, mm (null until entered) */
+  measured: number | null;
+}
+
+/** A measured point follows the nearest corner (within 30 mm), so it stays attached when corners are adjusted. */
+export function snapToCorner(s: Surface, p: Vec2): Vec2 {
+  let best = p, bestD = 30;
+  for (const c of s.outline.corners) { const d = Math.hypot(c[0] - p[0], c[1] - p[1]); if (d < bestD) { bestD = d; best = c; } }
+  return best;
+}
+
+export function checkLength(s: Surface, c: Check): number {
+  const a = snapToCorner(s, c.a), b = snapToCorner(s, c.b);
+  return Math.hypot(b[0] - a[0], b[1] - a[1]);
 }
 
 export function createSurface(args: { id: string; name: string; scanId: string; region: Region; raw: RawOutline }, now = new Date()): Surface {
@@ -53,7 +78,7 @@ export function withAnchors(s: Surface, anchors: Anchor[]): Surface {
   return { ...s, outline: { ...s.outline, anchors: sorted, ...resolveCorners(s.outline.edge, sorted, s.outline.options.tolerance) } };
 }
 
-export const surfaceArea = (s: Surface) => Math.abs(polygonArea(s.outline.corners.flat()));
+export const surfaceArea = (s: Surface) => Math.abs(polygonArea(outlinePolygon(s.outline)));
 
 /**
  * How much a tape measure laid over a bulging surface would differ from the
@@ -70,7 +95,7 @@ export function lengthErrorFromBulge(s: Surface): number {
 export const MARKER_MAX_AREA = 10000;
 
 export function surfaceToDxf(s: Surface): string {
-  const corners = s.outline.corners.flat();
+  const corners = outlinePolygon(s.outline);
   const b = bounds(corners);
   // move everything so the drawing starts at 0,0
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));

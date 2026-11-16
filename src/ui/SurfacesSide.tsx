@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { recleanSurface, lengthErrorFromBulge, surfaceArea, MARKER_MAX_AREA, type Surface } from '../core/surface';
+import { checkLength, recleanSurface, lengthErrorFromBulge, surfaceArea, withAnchors, MARKER_MAX_AREA, type Surface } from '../core/surface';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 
@@ -56,7 +56,8 @@ export function SurfacesSide() {
 }
 
 function SurfaceDetails({ surface }: { surface: Surface }) {
-  const { updateSurface, deleteSurface, openSurface, exportSurfaceDxf } = useApp();
+  const { updateSurface, deleteSurface, openSurface, exportSurfaceDxf, measuring, setMeasuring } = useApp();
+  const checks = surface.checks ?? [];
   const [name, setName] = useState(surface.name);
   const { options, corners, sides, anchors } = surface.outline;
   const manual = anchors.some((a) => a.manual);
@@ -101,14 +102,52 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
 
       <h3>Sides ({corners.length})</h3>
       <table className="sides">
-        <thead><tr><th>#</th><th>Length</th><th>Scan differs by</th></tr></thead>
+        <thead><tr><th>#</th><th>Length</th><th>Scan differs by</th><th>Curved</th></tr></thead>
         <tbody>
           {sides.map((s, i) => (
-            <tr key={i} className={s.maxDeviation > 5 ? 'warn' : ''}><td>{i + 1}</td><td>{mm(s.length)}</td><td>{s.maxDeviation.toFixed(1)} mm</td></tr>
+            <tr key={i} className={s.maxDeviation > 5 ? 'warn' : ''}>
+              <td>{i + 1}</td><td>{mm(s.length)}</td><td>{s.maxDeviation.toFixed(1)} mm</td>
+              <td>
+                <input
+                  type="checkbox" checked={!!anchors[i].curve} title="Follow the scanned edge as a smooth curve"
+                  onChange={() => void updateSurface(withAnchors(surface, anchors.map((a, k) => (k === i ? { ...a, curve: !a.curve } : a))))}
+                />
+              </td>
+            </tr>
           ))}
         </tbody>
       </table>
-      <small>“Scan differs by” over 5 mm means the scanned edge is not straight there: add a corner or check the scan.</small>
+      <small>“Scan differs by” over 5 mm means the scanned edge does not follow that side: tick Curved if the real edge is a curve, or add a corner.</small>
+
+      <h3>Check against the boat</h3>
+      <small>Measure a distance between two corners on the boat with a tape and compare it with the drawing. Diagonals are the best check.</small>
+      {checks.length > 0 && (
+        <table className="sides">
+          <thead><tr><th></th><th>Drawing</th><th>Tape (mm)</th><th>Difference</th><th></th></tr></thead>
+          <tbody>
+            {checks.map((c, i) => {
+              const drawn = checkLength(surface, c);
+              const diff = c.measured === null ? null : c.measured - drawn;
+              const setChecks = (next: typeof checks) => void updateSurface({ ...surface, checks: next });
+              return (
+                <tr key={c.id} className={diff !== null && Math.abs(diff) > 3 ? 'warn' : ''}>
+                  <td>M{i + 1}</td><td>{Math.round(drawn)}</td>
+                  <td>
+                    <input
+                      className="num" type="number" min={0} step={1} defaultValue={c.measured ?? ''}
+                      onBlur={(e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== c.measured) setChecks(checks.map((x) => (x.id === c.id ? { ...x, measured: v } : x))); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    />
+                  </td>
+                  <td>{diff === null ? '–' : `${diff > 0 ? '+' : ''}${diff.toFixed(0)} mm`}</td>
+                  <td><button className="ghost" title="Remove this measurement" onClick={() => setChecks(checks.filter((x) => x.id !== c.id))}>×</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <button onClick={() => setMeasuring(!measuring)}>{measuring ? 'Cancel' : 'Add a measurement'}</button>
 
       <div className="side__actions">
         <button className="primary" onClick={() => void exportSurfaceDxf(surface.id)}>Export DXF</button>

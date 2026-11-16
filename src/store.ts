@@ -20,6 +20,8 @@ interface State {
   selectedRegion: number | null;
   /** surface open in the 2D outline editor */
   openSurfaceId: string | null;
+  /** true while the user is picking two corners for a tape-measurement check */
+  measuring: boolean;
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -36,6 +38,7 @@ interface State {
   selectRegion(id: number | null): void;
   addSurfaceFromRegion(): Promise<void>;
   openSurface(id: string | null): void;
+  setMeasuring(on: boolean): void;
   /** `save: false` while dragging; the last change of a gesture must save. */
   updateSurface(surface: Surface, save?: boolean): Promise<void>;
   deleteSurface(id: string): Promise<void>;
@@ -69,7 +72,7 @@ export const useApp = create<State>((set, get) => {
     set({ scan: { id: ref.id, name: ref.name, ...(await loadScanFile(file)) }, selectedRegion: null });
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved',
@@ -122,7 +125,7 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false }),
     selectRegion: (id) => set({ selectedRegion: id }),
 
     addSurfaceFromRegion: async () => {
@@ -139,7 +142,8 @@ export const useApp = create<State>((set, get) => {
       }
     },
 
-    openSurface: (id) => set({ openSurfaceId: id }),
+    openSurface: (id) => set({ openSurfaceId: id, measuring: false }),
+    setMeasuring: (on) => set({ measuring: on }),
 
     updateSurface: async (surface, save = true) => {
       const { project } = get();

@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { nearestEdgeIndex } from '../core/cleanOutline';
+import { nearestEdgeIndex, outlinePolygon, sidePath } from '../core/cleanOutline';
+import { newId } from '../core/project';
 import { bounds, distToSegment } from '../core/poly';
-import { MARKER_MAX_AREA, withAnchors, type Surface } from '../core/surface';
+import { MARKER_MAX_AREA, checkLength, snapToCorner, withAnchors, type Surface } from '../core/surface';
 import { useApp } from '../store';
 
 interface View { x: number; y: number; w: number; h: number }
+
+const distToPath = (x: number, y: number, pts: number[]) => {
+  let best = Infinity;
+  for (let i = 0; i + 3 < pts.length; i += 2) best = Math.min(best, distToSegment(x, y, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]));
+  return best;
+};
 
 const path = (pts: ArrayLike<number>) => {
   let d = '';
@@ -18,6 +25,10 @@ const path = (pts: ArrayLike<number>) => {
  */
 export function OutlineEditor({ surface }: { surface: Surface }) {
   const updateSurface = useApp((s) => s.updateSurface);
+  const measuring = useApp((s) => s.measuring);
+  const setMeasuring = useApp((s) => s.setMeasuring);
+  const [checkFirst, setCheckFirst] = useState<number | null>(null);
+  useEffect(() => { if (!measuring) setCheckFirst(null); }, [measuring]);
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState<View | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -28,7 +39,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
   latest.current = surface;
 
   const fit = useMemo(() => {
-    const b = bounds([...surface.raw.outer, ...surface.outline.corners.flat()]);
+    const b = bounds([...surface.raw.outer, ...outlinePolygon(surface.outline)]);
     const pad = Math.max(b.maxX - b.minX, b.maxY - b.minY) * 0.08 + 20;
     return { x: b.minX - pad, y: -b.maxY - pad, w: b.maxX - b.minX + 2 * pad, h: b.maxY - b.minY + 2 * pad };
     // refit only when another surface is opened
@@ -92,12 +103,21 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
     corners.forEach((c, i) => { const dd = Math.hypot(c[0] - x, c[1] - y); if (dd < cornerD) { cornerD = dd; corner = i; } });
     if (corner >= 0) { removeCorner(corner); return; }
     let side = -1, sideD = 12 * px;
-    corners.forEach((c, i) => {
-      const n = corners[(i + 1) % corners.length];
-      const dd = distToSegment(x, y, c[0], c[1], n[0], n[1]);
+    corners.forEach((_, i) => {
+      const dd = distToPath(x, y, sidePath(surface.outline, i));
       if (dd < sideD) { sideD = dd; side = i; }
     });
     if (side >= 0) addCorner(side, x, y);
+  };
+
+  /** While measuring: the first corner clicked starts the measurement, the second finishes it. */
+  const pickForCheck = (i: number) => {
+    if (checkFirst === null) { setCheckFirst(i); return; }
+    if (checkFirst !== i) {
+      const check = { id: newId(), a: corners[checkFirst], b: corners[i], measured: null };
+      void updateSurface({ ...surface, checks: [...(surface.checks ?? []), check] });
+    }
+    setMeasuring(false);
   };
 
   // Delete key removes the selected corner
@@ -129,7 +149,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
           if (d.kind === 'pan') {
             setView({ ...d.view, x: d.view.x - (e.clientX - d.x) * px, y: d.view.y - (e.clientY - d.y) * px });
           } else {
-            if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3) return;
+            if (measuring || (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 3)) return;
             d.moved = true;
             const s = latest.current;
             const next = s.outline.anchors.map((a, k) => (k === d.index ? { ...a, manual: toPlane(e) } : a));
@@ -141,6 +161,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
           if (!d) return;
           if (d.kind === 'corner' && d.moved) { void updateSurface(latest.current, true); lastTap.current = null; return; }
           if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) { lastTap.current = null; return; }
+          if (measuring) { if (d.kind === 'corner') pickForCheck(d.index); return; }
           // A press without movement. Two of them close together are a double-click.
           // (The browser's own double-click event is unreliable here because the pointer is captured while pressed.)
           const prev = lastTap.current;
@@ -156,19 +177,33 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
         {surface.raw.holes.map((h, i) => (
           <path key={i} className={h.area <= MARKER_MAX_AREA ? 'ed-marker' : 'ed-hole'} d={path(h.points)} strokeWidth={1 * px} strokeDasharray={`${3 * px} ${3 * px}`} />
         ))}
-        <path className="ed-clean" d={path(corners.flat())} strokeWidth={2 * px} />
-        {corners.map((c, i) => {
-          const n = corners[(i + 1) % corners.length];
+        <path className="ed-clean" d={path(outlinePolygon(surface.outline))} strokeWidth={2 * px} />
+        {corners.map((_, i) => {
+          const sp = sidePath(surface.outline, i);
+          const mid = Math.floor(sp.length / 4) * 2; // middle point of the side (for a straight side: between its two corners)
+          const mx = sp.length === 4 ? (sp[0] + sp[2]) / 2 : sp[mid], my = sp.length === 4 ? (sp[1] + sp[3]) / 2 : sp[mid + 1];
           return (
-            <text key={`l${i}`} className="ed-label" x={(c[0] + n[0]) / 2} y={-(c[1] + n[1]) / 2} fontSize={12 * px} dy={-6 * px} textAnchor="middle" strokeWidth={3 * px}>
+            <text key={`l${i}`} className="ed-label" x={mx} y={-my} fontSize={12 * px} dy={-6 * px} textAnchor="middle" strokeWidth={3 * px}>
               {Math.round(sides[i].length)}
             </text>
+          );
+        })}
+        {(surface.checks ?? []).map((c, i) => {
+          const a = snapToCorner(surface, c.a), b = snapToCorner(surface, c.b);
+          const diff = c.measured === null ? null : c.measured - checkLength(surface, c);
+          return (
+            <g key={c.id} className={`ed-check${diff !== null && Math.abs(diff) > 3 ? ' warn' : ''}`}>
+              <line x1={a[0]} y1={-a[1]} x2={b[0]} y2={-b[1]} strokeWidth={1.5 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
+              <text x={(a[0] + b[0]) / 2} y={-(a[1] + b[1]) / 2} fontSize={12 * px} dy={-5 * px} textAnchor="middle" strokeWidth={3 * px}>
+                {`M${i + 1}: ${Math.round(checkLength(surface, c))}`}
+              </text>
+            </g>
           );
         })}
         {corners.map((c, i) => (
           <circle
             key={`c${i}`} data-corner={i}
-            className={`ed-corner${selected === i ? ' on' : ''}${anchors[i].manual ? ' manual' : ''}`}
+            className={`ed-corner${selected === i || checkFirst === i ? ' on' : ''}${anchors[i].manual ? ' manual' : ''}`}
             cx={c[0]} cy={-c[1]} r={6 * px} strokeWidth={2 * px}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -180,6 +215,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
         ))}
       </svg>
       <div className="viewer__views"><button onClick={() => setView(fit)}>Fit</button></div>
+      {measuring && <div className="viewer__busy">{checkFirst === null ? 'Click the first corner of the measurement' : 'Now click the second corner'}</div>}
       <div className="viewer__hint">
         Drag a corner to move it · Double-click a corner to remove it · Double-click a side to add a corner · Wheel: zoom · Drag background: move
       </div>
