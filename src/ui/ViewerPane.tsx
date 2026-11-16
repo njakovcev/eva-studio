@@ -27,7 +27,7 @@ export function ViewerPane({ onDropFile }: { onDropFile: (file: File) => void })
     return () => { viewer.current?.dispose(); viewer.current = null; };
   }, []);
 
-  useEffect(() => { viewer.current?.setScan(scan?.mesh ?? null, scan?.labels ?? null); }, [scan]);
+  useEffect(() => { viewer.current?.setScan(scan?.mesh ?? null, scan?.labels ?? null, scan?.orientation); }, [scan]);
   useEffect(() => { viewer.current?.setShowAreas(step === 'surfaces'); }, [step, scan]);
   useEffect(() => { viewer.current?.setSelected(selectedRegion); }, [selectedRegion, scan]);
 

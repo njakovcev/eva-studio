@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import type { MeshData } from '../core/obj';
+import type { Orientation } from '../core/orientation';
 
 export type StandardView = 'fit' | 'top' | 'front' | 'side';
 
@@ -28,6 +29,8 @@ export class Viewer3D {
   private labels: Int32Array | null = null;
   private showAreas = false;
   private selected: number | null = null;
+  /** which way is up in this scan (the scanner's own axes are arbitrary) */
+  private axes: Orientation = { up: [0, 0, 1], right: [1, 0, 0], forward: [0, 1, 0] };
   private center = new THREE.Vector3();
   private radius = 1000;
   private frame = 0;
@@ -71,8 +74,9 @@ export class Viewer3D {
     this.loop();
   }
 
-  setScan(data: MeshData | null, labels: Int32Array | null) {
+  setScan(data: MeshData | null, labels: Int32Array | null, orientation?: Orientation) {
     if (data === this.data) return;
+    if (orientation) this.axes = orientation;
     if (this.model) {
       this.scene.remove(this.model);
       this.model.geometry.dispose();
@@ -140,13 +144,12 @@ export class Viewer3D {
   }
 
   setView(view: StandardView) {
-    const dir = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 0, 1);
-    if (view === 'top') { dir.set(0, 0, 1); up.set(0, 1, 0); }
-    else if (view === 'front') dir.set(0, -1, 0);
-    else if (view === 'side') dir.set(1, 0, 0);
-    else dir.set(0.55, -0.75, 0.6).normalize();
-    this.lookFrom(dir, up);
+    const v = (a: ArrayLike<number>) => new THREE.Vector3(a[0], a[1], a[2]);
+    const up = v(this.axes.up), right = v(this.axes.right), forward = v(this.axes.forward);
+    if (view === 'top') this.lookFrom(up.clone(), forward); // from above, looking down
+    else if (view === 'front') this.lookFrom(forward.clone().negate(), up);
+    else if (view === 'side') this.lookFrom(right.clone(), up);
+    else this.lookFrom(right.clone().multiplyScalar(0.55).addScaledVector(forward, -0.75).addScaledVector(up, 0.6).normalize(), up);
   }
 
   /** Look straight at a flat area (against its normal). */

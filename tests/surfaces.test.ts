@@ -6,6 +6,7 @@ import { autoClean, bridgeGaps, nearestEdgeIndex, resolveCorners } from '../src/
 import { polygonArea } from '../src/core/poly';
 import { createSurface, surfaceToDxf, withAnchors } from '../src/core/surface';
 import { eigenSymmetric3 } from '../src/core/vec';
+import { computeOrientation } from '../src/core/orientation';
 
 /** A 1000 × 600 floor with a 300 high wall along one long side, in 20 mm squares, with small noise. */
 function floorAndWall(noise = 0.2): MeshData {
@@ -121,5 +122,20 @@ describe('eigenSymmetric3', () => {
     expect(values).toEqual([9, 4, 1]);
     expect(Math.abs(vectors[0][1])).toBeCloseTo(1);
     expect(Math.abs(vectors[2][2])).toBeCloseTo(1);
+  });
+});
+
+describe('scan orientation', () => {
+  it('finds up from the side the scanner saw, whatever the scan axes are', () => {
+    const mesh = floorAndWall();
+    const seg = segmentFlatRegions(mesh);
+    const o = computeOrientation(mesh, seg.regions);
+    expect(o.up[2]).toBeGreaterThan(0.99); // floor faces +Z
+    expect(Math.abs(o.right[0])).toBeGreaterThan(0.99); // long side runs along X
+
+    // the same scan turned upside down: up must follow
+    const flipped = { positions: mesh.positions.map((v, i) => (i % 3 === 0 ? v : -v)), indices: mesh.indices };
+    const o2 = computeOrientation(flipped, segmentFlatRegions(flipped).regions);
+    expect(o2.up[2]).toBeLessThan(-0.99);
   });
 });
