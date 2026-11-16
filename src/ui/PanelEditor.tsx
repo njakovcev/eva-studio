@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { outlinePolygon, sidePath } from '../core/cleanOutline';
 import {
-  addCorner, cutOutline, cutoutDistances, cutoutOutline, moveCorner, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
+  addCorner, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, moveCorner, pointAlongSide, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
   type EdgePoint, type Panel,
 } from '../core/panel';
 import { bounds } from '../core/poly';
@@ -72,7 +72,18 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
       const square = straightAcross(panel.shape, splitFrom);
       if (square && Math.hypot(square.point[0] - near.point[0], square.point[1] - near.point[1]) < 14 * px) return square;
     }
-    return { side: near.side, point: near.point };
+    // land on whole millimetres from the start of the side, so the numbers shown are round
+    const whole = Math.round(distancesAlongSide(panel.shape, near).before);
+    return { side: near.side, point: pointAlongSide(panel.shape, near.side, whole) };
+  };
+
+  /** For a split point: its distance to each end of the side it sits on, with a place to write each number. */
+  const splitLabels = (q: EdgePoint) => {
+    const { before, after } = distancesAlongSide(panel.shape, q);
+    const out: { x: number; y: number; text: string }[] = [];
+    if (before > 0.5) { const m = pointAlongSide(panel.shape, q.side, before / 2); out.push({ x: m[0], y: m[1], text: String(Math.round(before)) }); }
+    if (after > 0.5) { const m = pointAlongSide(panel.shape, q.side, before + after / 2); out.push({ x: m[0], y: m[1], text: String(Math.round(after)) }); }
+    return out;
   };
 
   const nearest = (x: number, y: number): NonNullable<typeof focus> | null => {
@@ -212,6 +223,9 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
           <g className="pe-split">
             {splitFrom && splitTo && <line x1={splitFrom.point[0]} y1={-splitFrom.point[1]} x2={splitTo.point[0]} y2={-splitTo.point[1]} strokeWidth={2 * px} strokeDasharray={`${8 * px} ${5 * px}`} />}
             {[splitFrom, splitHover].map((q, i) => q && <circle key={i} cx={q.point[0]} cy={-q.point[1]} r={5 * px} />)}
+            {[splitFrom, splitHover].flatMap((q, i) => (q ? splitLabels(q).map((l, k) => (
+              <text key={`${i}-${k}`} className="pe-split__len" x={l.x} y={-l.y} fontSize={13 * px} dy={16 * px} textAnchor="middle" strokeWidth={4 * px}>{l.text}</text>
+            )) : []))}
             {splitFrom && splitTo && (
               <text className="ed-label" x={(splitFrom.point[0] + splitTo.point[0]) / 2} y={-(splitFrom.point[1] + splitTo.point[1]) / 2} fontSize={12 * px} dy={-6 * px} textAnchor="middle" strokeWidth={3 * px}>
                 {Math.round(Math.hypot(splitTo.point[0] - splitFrom.point[0], splitTo.point[1] - splitFrom.point[1]))} mm
@@ -225,7 +239,7 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
         <span><i className="lg lg-surface" />Surface</span><span><i className="lg lg-shape" />Panel shape</span><span><i className="lg lg-cut" />Cut line</span>
         {siblings.length > 0 && <span><i className="lg lg-sibling" />Other panels</span>}
       </div>
-      {splitting && <div className="viewer__busy">{splitFrom ? 'Click where the cut ends (it snaps to a square cut and to corners) · Esc to cancel' : 'Click on the panel edge where the cut starts · Esc to cancel'}</div>}
+      {splitting && <div className="viewer__busy">{splitFrom ? 'Click where the cut ends (it snaps to a square cut and to corners) · Esc to cancel' : 'Click on the panel edge where the cut starts · the numbers are the distances to both ends of that side · Esc to cancel'}</div>}
       <div className="viewer__hint">
         Drag a corner to reshape · Double-click a corner to remove it · Double-click a side to add a corner · Drag an opening to move it · Wheel: zoom
       </div>

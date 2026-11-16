@@ -137,3 +137,5 @@ button.danger { color: var(--danger); }
 .pe-dim line { stroke: #ff8c1a; } .pe-dim circle { fill: #ff8c1a; }
 .pe-dim text { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
 .opening__dist { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-top: 4px; border-top: 1px dashed var(--line); color: var(--muted); }
+
+.pe-split__len { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }

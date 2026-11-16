@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCorner, cutLength, cutOutline, cutoutDistances, cutoutOutline, cutoutWarnings, setCutoutDistance, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
+import { addCorner, cutLength, cutOutline, cutoutDistances, cutoutOutline, distancesAlongSide, pointAlongSide, cutoutWarnings, setCutoutDistance, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
 import { bounds, polygonArea } from '../src/core/poly';
 import type { Vec2 } from '../src/core/vec';
 
@@ -183,6 +183,14 @@ describe('splitting', () => {
     const withHole = [a, b].filter((q) => q.cutouts?.length);
     expect(withHole.length).toBe(1);
     expect(pointIn(withHole[0], 800, 100)).toBe(true);
+  });
+
+  it('tells how far a split point is from both ends of its side', () => {
+    const shape = panel(rect, 0, 0).shape;
+    const d = distancesAlongSide(shape, { side: 0, point: [400, 0] });
+    expect(d.before).toBeCloseTo(400, 6); expect(d.after).toBeCloseTo(600, 6);
+    expect(pointAlongSide(shape, 1, 250)).toEqual([1000, 250]);
+    expect(pointAlongSide(shape, 0, 5000)).toEqual([1000, 0]); // never past the end
   });
 
   it('offers a square cut straight across', () => {

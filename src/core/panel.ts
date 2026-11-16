@@ -421,6 +421,27 @@ export function nearestEdgePoint(shape: PanelShape, x: number, y: number): EdgeP
   return best;
 }
 
+/** How far an edge point is from the two ends of its side, measured along the side (mm). */
+export function distancesAlongSide(shape: PanelShape, at: EdgePoint): { before: number; after: number } {
+  const path = toPoints(sidePath(shape, at.side));
+  let walked = 0, best = Infinity, before = 0;
+  for (let k = 0; k + 1 < path.length; k++) {
+    const a = path[k], b = path[k + 1], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    const t = Math.max(0, Math.min(1, len > 0 ? ((at.point[0] - a[0]) * dx + (at.point[1] - a[1]) * dy) / (len * len) : 0));
+    const d = Math.hypot(at.point[0] - (a[0] + dx * t), at.point[1] - (a[1] + dy * t));
+    if (d < best) { best = d; before = walked + len * t; }
+    walked += len;
+  }
+  return { before, after: walked - before };
+}
+
+/** The point at a given distance along a side, from its first corner. */
+export function pointAlongSide(shape: PanelShape, side: number, distance: number): Vec2 {
+  const path = toPoints(sidePath(shape, side));
+  const d = Math.max(0, Math.min(pathLength(path), distance));
+  return subPath(path, d, d)[0];
+}
+
 /**
  * From a point on the edge, straight across the panel at a right angle to that edge:
  * where does it reach the edge again? Used to offer a square split.
