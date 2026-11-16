@@ -334,6 +334,72 @@ export function cutoutWarnings(panel: Panel, cut: CutOutline): string[] {
   return out;
 }
 
+/** How far an opening's edge is from one side of the panel (measured to the cut line of that side). */
+export interface EdgeDistance {
+  side: number;
+  /** mm, edge of the opening to the cut line; negative if the opening crosses it */
+  distance: number;
+  /** the two ends of the measurement: on the panel edge, and on the opening */
+  from: Vec2;
+  to: Vec2;
+}
+
+/**
+ * Distances from an opening to the nearest sides of the panel, nearest first.
+ * Only sides the opening actually faces are listed (not ones it merely lies beyond the end of).
+ */
+export function cutoutDistances(panel: Panel, index: number, max = 3): EdgeDistance[] {
+  const c = panel.cutouts?.[index];
+  if (!c) return [];
+  const outline = toPoints(cutoutOutline(c).flat);
+  const n = panel.shape.corners.length;
+  const out: EdgeDistance[] = [];
+  for (let i = 0; i < n; i++) {
+    const path = offsetPath(toPoints(sidePath(panel.shape, i)), panel.offsets[i] ?? 0);
+    let best: EdgeDistance | null = null, atEnd = false;
+    const total = pathLength(path);
+    for (const q of outline) {
+      let walked = 0;
+      for (let k = 0; k + 1 < path.length; k++) {
+        const a = path[k], b = path[k + 1], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+        const t = Math.max(0, Math.min(1, len > 0 ? ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (len * len) : 0));
+        const f: Vec2 = [a[0] + dx * t, a[1] + dy * t], d = dist(f, q);
+        if (!best || d < best.distance) {
+          best = { side: i, distance: d, from: f, to: q };
+          const along = walked + len * t;
+          atEnd = along < 1e-6 || along > total - 1e-6;
+        }
+        walked += len;
+      }
+    }
+    if (!best || atEnd) continue;
+    // inside the panel the opening lies to the left of the side's direction; beyond the cut line the distance is negative
+    const centre = c.center, a = path[0], b = path[path.length - 1];
+    const leftOf = (b[0] - a[0]) * (centre[1] - a[1]) - (b[1] - a[1]) * (centre[0] - a[0]) > 0;
+    const crosses = outline.some((q) => (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]) < 0) && path.length === 2;
+    if (!leftOf || crosses) best.distance = -best.distance;
+    out.push(best);
+  }
+  return out.sort((x, y) => x.distance - y.distance).slice(0, max);
+}
+
+/** Moves an opening straight towards or away from a side until it is `distance` mm from that side's cut line. */
+export function setCutoutDistance(panel: Panel, index: number, side: number, distance: number): Panel {
+  const now = cutoutDistances(panel, index, panel.shape.corners.length).find((d) => d.side === side);
+  const c = panel.cutouts?.[index];
+  if (!now || !c) return panel;
+  let dx = now.to[0] - now.from[0], dy = now.to[1] - now.from[1];
+  let len = Math.hypot(dx, dy);
+  if (len < 1e-6 || now.distance < 0) {
+    // touching or crossing the edge: move along the side's inward direction instead
+    const sp = toPoints(sidePath(panel.shape, side)), a = sp[0], b = sp[sp.length - 1];
+    dx = -(b[1] - a[1]); dy = b[0] - a[0]; len = Math.hypot(dx, dy) || 1;
+  }
+  const move = distance - now.distance;
+  const center: Vec2 = [c.center[0] + (dx / len) * move, c.center[1] + (dy / len) * move];
+  return { ...panel, cutouts: panel.cutouts!.map((x, k) => (k === index ? { ...x, center } : x)) };
+}
+
 // ---------- splitting ----------
 
 /** A point on the edge of the panel shape: which side, and where. */

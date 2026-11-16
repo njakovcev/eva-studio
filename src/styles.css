@@ -133,3 +133,7 @@ button.danger { color: var(--danger); }
 .opening label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .opening .num { width: 54px; padding: 3px 6px; }
 .opening .ghost { margin-left: auto; }
+
+.pe-dim line { stroke: #ff8c1a; } .pe-dim circle { fill: #ff8c1a; }
+.pe-dim text { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.opening__dist { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-top: 4px; border-top: 1px dashed var(--line); color: var(--muted); }

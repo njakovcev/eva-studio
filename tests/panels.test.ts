@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCorner, cutLength, cutOutline, cutoutOutline, cutoutWarnings, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
+import { addCorner, cutLength, cutOutline, cutoutDistances, cutoutOutline, cutoutWarnings, setCutoutDistance, moveCorner, nearestEdgePoint, panelArea, panelToDxf, removeCorner, smallestBox, splitPanel, straightAcross, type Panel } from '../src/core/panel';
 import { bounds, polygonArea } from '../src/core/poly';
 import type { Vec2 } from '../src/core/vec';
 
@@ -130,6 +130,32 @@ describe('openings', () => {
     near(panelArea(p, cut), polygonArea(cut.flat) - Math.PI * 2500 - Math.PI * 900, 25);
     expect(cutoutWarnings(p, cut)).toEqual(['Opening 2 reaches outside the panel.']);
     expect(panelToDxf(p, undefined).split('INNER_CUT').length - 1).toBeGreaterThanOrEqual(3); // layer + two openings
+  });
+});
+
+describe('distance from an opening to the panel edges', () => {
+  // 1000 × 600 panel, 15 mm offsets: cut line at x 15…985, y 15…585
+  const p: Panel = { ...panel(rect, 15, 20), cutouts: [{ id: 'a', kind: 'circle', center: [215, 165], diameter: 100 }, { id: 'b', kind: 'rect', center: [700, 300], width: 200, height: 100, angle: 0, radius: 10 }] };
+
+  it('measures from the edge of the opening to the cut line', () => {
+    const d = cutoutDistances(p, 0);
+    expect(d[0].side).toBe(0); expect(d[0].distance).toBeCloseTo(100, 1); // bottom: 165 − 50 − 15
+    expect(d[1].side).toBe(3); expect(d[1].distance).toBeCloseTo(150, 1); // left: 215 − 50 − 15
+    const r = cutoutDistances(p, 1);
+    expect(r[0].distance).toBeCloseTo(185, 1); // right: 985 − 800
+    expect(r.map((x) => Math.round(x.distance))).toEqual([185, 235, 235]); // then bottom and top
+  });
+
+  it('typing a distance moves the opening straight to it', () => {
+    const moved = setCutoutDistance(p, 0, 3, 60); // 60 mm from the left edge
+    expect(moved.cutouts![0].center[0]).toBeCloseTo(125, 1);
+    expect(moved.cutouts![0].center[1]).toBeCloseTo(165, 1); // only moved sideways
+    expect(cutoutDistances(moved, 0).find((x) => x.side === 3)!.distance).toBeCloseTo(60, 1);
+  });
+
+  it('works with a different offset on each side', () => {
+    const q: Panel = { ...p, offsets: [50, 15, 15, 15] };
+    expect(cutoutDistances(q, 0)[0].distance).toBeCloseTo(65, 1); // bottom cut line moved up by 35
   });
 });
 

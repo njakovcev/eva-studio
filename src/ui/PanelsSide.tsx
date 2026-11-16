@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
-import { cutLength, cutOutline, cutoutWarnings, createPanel, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
+import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { newId } from '../core/project';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 
 /** A number box that applies its value when you leave it or press Enter. */
-function NumberField({ value, onCommit, title }: { value: number; onCommit: (v: number) => void; title?: string }) {
+function NumberField({ value, onCommit, title, allowNegative }: { value: number; onCommit: (v: number) => void; title?: string; allowNegative?: boolean }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
   const commit = () => {
     const v = Number(text.replace(',', '.'));
-    if (text.trim() === '' || !Number.isFinite(v) || v < 0) { setText(String(value)); return; }
+    if (text.trim() === '' || !Number.isFinite(v) || (v < 0 && !allowNegative)) { setText(String(value)); return; }
     if (v !== value) onCommit(v);
   };
   return (
@@ -153,7 +153,7 @@ function PanelDetails({ panel }: { panel: Panel }) {
       <small>0 keeps a corner sharp. Side and corner numbers are shown in the drawing.</small>
 
       <h3>Openings</h3>
-      <small>Drains, fittings, hatches. The size is the hole that gets cut; drag an opening in the drawing to place it.</small>
+      <small>Drains, fittings, hatches. The size is the hole that gets cut. Drag an opening in the drawing, or type its distance from a panel edge (measured from the edge of the hole to the cut line).</small>
       {cutouts.map((c, i) => (
         <div key={c.id} className={`opening${isOn('cutout', i) ? ' on' : ''}`} onMouseEnter={() => setPanelFocus({ kind: 'cutout', index: i })}>
           <strong>O{i + 1}</strong>
@@ -168,6 +168,12 @@ function PanelDetails({ panel }: { panel: Panel }) {
             </>
           )}
           <button className="ghost" title="Remove this opening" onClick={() => { setPanelFocus(null); void updatePanel({ ...panel, cutouts: cutouts.filter((_, k) => k !== i) }); }}>×</button>
+          <div className="opening__dist">
+            <span>From the panel edge:</span>
+            {cutoutDistances(panel, i).map((d) => (
+              <label key={d.side}>S{d.side + 1} <NumberField value={Math.round(d.distance * 10) / 10} allowNegative onCommit={(v) => void updatePanel(setCutoutDistance(panel, i, d.side, v))} /></label>
+            ))}
+          </div>
         </div>
       ))}
       <div className="row">

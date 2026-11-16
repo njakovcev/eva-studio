@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { outlinePolygon, sidePath } from '../core/cleanOutline';
 import {
-  addCorner, cutOutline, cutoutOutline, moveCorner, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
+  addCorner, cutOutline, cutoutDistances, cutoutOutline, moveCorner, nearestEdgePoint, pointInPolygon, removeCorner, straightAcross,
   type EdgePoint, type Panel,
 } from '../core/panel';
 import { bounds } from '../core/poly';
@@ -51,6 +51,8 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
     [allPanels, panel.surfaceId, panel.id],
   );
   const { corners } = panel.shape;
+  // while an opening is selected: how far it is from the panel edges it faces
+  const distances = useMemo(() => (focus?.kind === 'cutout' ? cutoutDistances(panel, focus.index) : []), [panel, focus]);
 
   const drag = useRef<Drag | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
@@ -175,6 +177,13 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
             </g>
           );
         })}
+        {distances.map((d) => (
+          <g key={`d${d.side}`} className="pe-dim">
+            <line x1={d.from[0]} y1={-d.from[1]} x2={d.to[0]} y2={-d.to[1]} strokeWidth={1.5 * px} />
+            <circle cx={d.from[0]} cy={-d.from[1]} r={2.5 * px} /><circle cx={d.to[0]} cy={-d.to[1]} r={2.5 * px} />
+            <text x={(d.from[0] + d.to[0]) / 2} y={-(d.from[1] + d.to[1]) / 2} fontSize={12 * px} dy={-5 * px} textAnchor="middle" strokeWidth={3 * px}>{Math.round(d.distance)}</text>
+          </g>
+        ))}
         <path className="pe-shape" d={svgPath(outlinePolygon(panel.shape))} strokeWidth={1 * px} strokeDasharray={`${5 * px} ${4 * px}`} />
         {corners.map((_, i) => {
           const sp = sidePath(panel.shape, i);
