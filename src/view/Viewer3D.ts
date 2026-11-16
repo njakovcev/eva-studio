@@ -61,6 +61,13 @@ export class Viewer3D {
 
     // a click (press and release without moving) picks; a drag rotates
     const el = this.renderer.domElement;
+    // Trackpad pinch (wheel + ctrlKey): zoom the model at a comfortable speed.
+    // Handled before the orbit controls see it, which would treat the tiny pinch steps as almost nothing.
+    el.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      this.dolly(Math.exp(Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
+    }, { passive: false, capture: true });
     el.addEventListener('pointerdown', (e) => { this.down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; });
     el.addEventListener('pointerup', (e) => {
       const d = this.down; this.down = null;
@@ -167,6 +174,15 @@ export class Viewer3D {
     this.controls.target.copy(this.center);
     this.controls.minDistance = this.radius * 0.02;
     this.controls.maxDistance = distance * 8;
+    this.controls.update();
+    this.requestRender();
+  }
+
+  /** Moves the camera towards (factor < 1) or away from (factor > 1) the point it looks at. */
+  private dolly(factor: number) {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const distance = THREE.MathUtils.clamp(offset.length() * factor, this.controls.minDistance, this.controls.maxDistance);
+    this.camera.position.copy(this.controls.target).add(offset.setLength(distance));
     this.controls.update();
     this.requestRender();
   }

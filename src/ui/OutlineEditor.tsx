@@ -46,6 +46,21 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
     return () => ro.disconnect();
   }, [view]);
 
+  // Wheel, two-finger scroll and trackpad pinch all zoom around the pointer. Registered directly
+  // (not through React) so the browser can be told not to scroll or magnify the page.
+  useEffect(() => {
+    const el = svg.current; if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const p = el.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+      const q = p.matrixTransform(el.getScreenCTM()!.inverse());
+      const k = Math.exp(Math.max(-50, Math.min(50, e.deltaY)) * (e.ctrlKey ? 0.01 : 0.0015));
+      setView((v) => (v ? { x: q.x - (q.x - v.x) * k, y: q.y - (q.y - v.y) * k, w: v.w * k, h: v.h * k } : v));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [view === null]);
+
   const toPlane = (e: { clientX: number; clientY: number }): [number, number] => {
     const p = svg.current!.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
     const q = p.matrixTransform(svg.current!.getScreenCTM()!.inverse());
@@ -103,10 +118,6 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
       <svg
         ref={svg}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
-        onWheel={(e) => {
-          const [mx, my] = toPlane(e); const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-          setView({ x: mx - (mx - view.x) * k, y: -my - (-my - view.y) * k, w: view.w * k, h: view.h * k });
-        }}
         onPointerDown={(e) => {
           if ((e.target as Element).closest('[data-corner]')) return;
           (e.currentTarget as Element).setPointerCapture(e.pointerId);
