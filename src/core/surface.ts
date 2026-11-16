@@ -78,6 +78,9 @@ export function withAnchors(s: Surface, anchors: Anchor[]): Surface {
   return { ...s, outline: { ...s.outline, anchors: sorted, ...resolveCorners(s.outline.edge, sorted, s.outline.options.tolerance) } };
 }
 
+/** The clean outline of a surface as one closed polygon. */
+export const outlinePolygonOf = (s: Surface) => outlinePolygon(s.outline);
+
 export const surfaceArea = (s: Surface) => Math.abs(polygonArea(outlinePolygon(s.outline)));
 
 /**

@@ -11,7 +11,7 @@ and saved to the user's own disk; nothing is uploaded.
 |---|---|---|
 | v0.1 | Project folder, open OBJ scan, 3D view | done |
 | v0.2 | Surfaces: pick flat areas, straight-sided outline with editable corners, DXF export | done, incl. curved sides and tape-measurement checks |
-| v0.3 | Panels: per-side offset, per-corner radius, reshape, cut-outs, splitting | next |
+| v0.3 | Panels: per-side offset, per-corner radius, reshape, DXF with true arcs | done (cut-outs and splitting into several panels still to come) |
 | v0.4 | Design: border, pattern library, logo across panels, feasibility checks | |
 | v0.5 | Client PDF | |
 | v0.6 | Nesting and G-code | |

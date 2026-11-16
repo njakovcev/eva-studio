@@ -150,7 +150,8 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
       <button onClick={() => setMeasuring(!measuring)}>{measuring ? 'Cancel' : 'Add a measurement'}</button>
 
       <div className="side__actions">
-        <button className="primary" onClick={() => void exportSurfaceDxf(surface.id)}>Export DXF</button>
+        <button className="primary" onClick={() => useApp.getState().setStep('panels')}>Next: make a panel →</button>
+        <button onClick={() => void exportSurfaceDxf(surface.id)}>Export DXF</button>
         <button className="danger" onClick={() => { if (confirm(`Delete surface "${surface.name}"? The scan is not affected.`)) void deleteSurface(surface.id); }}>Delete surface</button>
       </div>
     </>

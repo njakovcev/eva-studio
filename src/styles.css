@@ -109,3 +109,16 @@ button.danger { color: var(--danger); }
 .ed-check.warn line { stroke: #c77700; } .ed-check.warn text { fill: #c77700; }
 .sides th, .sides td { padding-right: 8px; }
 .sides input.num { color: var(--text); font-weight: 400; }
+
+/* v0.3 – panels */
+.row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.row .num, .sides .num { width: 64px; padding: 3px 6px; }
+.sides tr.on td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pe-surface { fill: color-mix(in srgb, var(--muted) 14%, transparent); stroke: var(--muted); }
+.pe-shape { fill: none; stroke: var(--text); opacity: .55; }
+.pe-cut { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: #d23f31; stroke-linejoin: round; }
+.pe-focus { fill: none; stroke: #ff8c1a; stroke-linecap: round; opacity: .7; }
+.ed-label.on { fill: #ff8c1a; font-weight: 700; }
+.editor__legend { position: absolute; top: 12px; left: 12px; display: flex; gap: 14px; font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 4px 10px; border-radius: 6px; }
+.lg { display: inline-block; width: 18px; height: 0; margin-right: 5px; vertical-align: middle; border-top: 2px solid var(--muted); }
+.lg-shape { border-top-style: dashed; border-top-color: var(--text); opacity: .6; } .lg-cut { border-top-color: #d23f31; }

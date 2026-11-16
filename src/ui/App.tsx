@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useApp, type Step } from '../store';
 import { OutlineEditor } from './OutlineEditor';
+import { PanelEditor } from './PanelEditor';
+import { PanelsSide } from './PanelsSide';
 import { StartScreen } from './StartScreen';
 import { SurfacesSide } from './SurfacesSide';
 import { ViewerPane } from './ViewerPane';
@@ -9,19 +11,21 @@ import { count, size, squareMetres } from './format';
 const STEPS: { id: string; label: string; ready: boolean }[] = [
   { id: 'scans', label: 'Scans', ready: true },
   { id: 'surfaces', label: 'Surfaces', ready: true },
-  { id: 'panels', label: 'Panels', ready: false },
+  { id: 'panels', label: 'Panels', ready: true },
   { id: 'design', label: 'Design', ready: false },
   { id: 'export', label: 'Export', ready: false },
 ];
 
 export function App() {
   const {
-    project, scan, step, openSurfaceId, error, notice, saveState, busy,
+    project, scan, step, openSurfaceId, openPanelId, error, notice, saveState, busy,
     clearError, clearNotice, closeProject, addScan, showScan, removeScan, quickView, setStep,
   } = useApp();
   const fileInput = useRef<HTMLInputElement>(null);
   const inWorkspace = project !== null || scan !== null;
   const openSurface = project?.surfaces.find((s) => s.id === openSurfaceId);
+  const openPanel = project?.panels.find((p) => p.id === openPanelId);
+  const editing = openSurface ?? openPanel;
 
   useEffect(() => {
     if (!notice) return;
@@ -77,7 +81,7 @@ export function App() {
 
           <main className="work">
             <aside className="side">
-              {step === 'surfaces' ? <SurfacesSide /> : (
+              {step === 'surfaces' ? <SurfacesSide /> : step === 'panels' ? <PanelsSide /> : (
                 <>
                   <div className="side__head">
                     <h2>Scans</h2>
@@ -115,8 +119,9 @@ export function App() {
               )}
             </aside>
             {/* the 3D view stays mounted (hidden) while the 2D editor is open, so the scan is not rebuilt */}
-            <div className={openSurface ? 'pane pane--hidden' : 'pane'}><ViewerPane onDropFile={takeFile} /></div>
+            <div className={editing ? 'pane pane--hidden' : 'pane'}><ViewerPane onDropFile={takeFile} /></div>
             {openSurface && <div className="pane"><OutlineEditor surface={openSurface} /></div>}
+            {openPanel && <div className="pane"><PanelEditor panel={openPanel} surface={project?.surfaces.find((s) => s.id === openPanel.surfaceId)} /></div>}
           </main>
         </>
       )}
