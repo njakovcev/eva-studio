@@ -35,6 +35,8 @@ interface State {
   error: string | null;
   notice: string | null;
   saveState: 'saved' | 'saving' | 'failed';
+  canUndo: boolean;
+  canRedo: boolean;
 
   newProject(info: { name: string; client: string; boat: string }, parent: FileSystemDirectoryHandle): Promise<void>;
   openProject(dir: FileSystemDirectoryHandle): Promise<void>;
@@ -61,6 +63,9 @@ interface State {
   setSplitting(on: boolean): void;
   splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
   updateSettings(change: Partial<ProjectSettings>): Promise<void>;
+  /** Steps back / forward through the changes made to surfaces, panels and settings since the project was opened. */
+  undo(): Promise<void>;
+  redo(): Promise<void>;
   clearError(): void;
   clearNotice(): void;
 }
@@ -77,12 +82,50 @@ export const useApp = create<State>((set, get) => {
     finally { set({ busy: null }); }
   };
 
-  const persist = async (project: Project) => {
+  // ---- undo history: earlier saved states of the project (kept in memory only) ----
+  const HISTORY_LIMIT = 100;
+  let undoStack: Project[] = [], redoStack: Project[] = [];
+  /** the project as last saved; while a corner is being dragged the screen is ahead of this */
+  let lastSaved: Project | null = null;
+  const resetHistory = (project: Project | null) => {
+    undoStack = []; redoStack = []; lastSaved = project;
+    set({ canUndo: false, canRedo: false });
+  };
+
+  const persist = async (project: Project, history = true) => {
     const dir = get().dir;
     if (!dir) return;
-    set({ project, saveState: 'saving' });
+    if (history && lastSaved && lastSaved !== project) {
+      undoStack.push(lastSaved);
+      if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+      redoStack = [];
+    }
+    lastSaved = project;
+    set({ project, saveState: 'saving', canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
     try { await saveProject(dir, project); set({ saveState: 'saved' }); }
     catch (e) { set({ saveState: 'failed', error: `The project could not be saved: ${message(e)}` }); }
+  };
+
+  /** Shows an earlier (or later) state. Keeps the same surface or panel open where it still exists. */
+  const travel = async (from: Project[], to: Project[]) => {
+    const target = from.pop();
+    const now = lastSaved;
+    if (!target || !now) return;
+    to.push(now);
+    const { openSurfaceId, openPanelId } = get();
+    const fix = <T extends { id: string }>(open: string | null, before: T[], after: T[], sameGroup: (a: T, b: T) => boolean) => {
+      if (!open || after.some((x) => x.id === open)) return open;
+      // the open item no longer exists (e.g. a split was undone): open what took its place
+      const was = before.find((x) => x.id === open);
+      const fresh = after.filter((x) => !before.some((y) => y.id === x.id));
+      return (fresh.find((x) => !was || sameGroup(x, was)) ?? fresh[0])?.id ?? null;
+    };
+    set({
+      openSurfaceId: fix(openSurfaceId, now.surfaces, target.surfaces, () => true),
+      openPanelId: fix(openPanelId, now.panels, target.panels, (a, b) => a.surfaceId === b.surfaceId),
+      panelFocus: null, measuring: false, splitting: false,
+    });
+    await persist(target, false);
   };
 
   const load = async (ref: ScanRef) => {
@@ -93,12 +136,13 @@ export const useApp = create<State>((set, get) => {
   const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, error: null, notice: null };
 
   return {
-    ...closed, busy: null, saveState: 'saved',
+    ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
 
     newProject: (info, parent) => run('Creating project…', async () => {
       const project = createProject(info);
       const dir = await createProjectFolder(parent, project);
       set({ ...closed, project, dir, saveState: 'saved' });
+      resetHistory(project);
       await rememberProject(project, dir);
     }),
 
@@ -106,11 +150,12 @@ export const useApp = create<State>((set, get) => {
       if (!(await ensurePermission(dir))) throw new Error('Access to the folder was not allowed.');
       const project = await openProjectFolder(dir);
       set({ ...closed, project, dir, saveState: 'saved' });
+      resetHistory(project);
       await rememberProject(project, dir);
       if (project.scans.length) await load(project.scans[0]);
     }),
 
-    closeProject: () => set(closed),
+    closeProject: () => { set(closed); resetHistory(null); },
 
     addScan: (file) => run(`Reading ${file.name}…`, async () => {
       const { project, dir } = get();
@@ -123,7 +168,9 @@ export const useApp = create<State>((set, get) => {
         addedAt: new Date().toISOString(), stats: loaded.stats,
       };
       set({ scan: { id: ref.id, name: ref.name, ...loaded }, selectedRegion: null });
-      await persist({ ...project, scans: [...project.scans, ref] });
+      // adding or removing a scan is not part of the undo history (the file on disk would not follow)
+      await persist({ ...project, scans: [...project.scans, ref] }, false);
+      resetHistory(get().project);
     }),
 
     showScan: (id) => run('Loading scan…', async () => {
@@ -136,7 +183,8 @@ export const useApp = create<State>((set, get) => {
       const { project, scan } = get();
       if (!project) return;
       if (scan?.id === id) set({ scan: null, selectedRegion: null });
-      await persist({ ...project, scans: project.scans.filter((s) => s.id !== id) });
+      await persist({ ...project, scans: project.scans.filter((s) => s.id !== id) }, false);
+      resetHistory(get().project);
     },
 
     quickView: (file) => run(`Reading ${file.name}…`, async () => {
@@ -252,6 +300,9 @@ export const useApp = create<State>((set, get) => {
         set({ error: `The DXF could not be saved: ${message(e)}` });
       }
     },
+
+    undo: () => travel(undoStack, redoStack),
+    redo: () => travel(redoStack, undoStack),
 
     clearError: () => set({ error: null }),
     clearNotice: () => set({ notice: null }),

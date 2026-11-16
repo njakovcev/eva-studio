@@ -19,7 +19,7 @@ const STEPS: { id: string; label: string; ready: boolean }[] = [
 export function App() {
   const {
     project, scan, step, openSurfaceId, openPanelId, error, notice, saveState, busy,
-    clearError, clearNotice, closeProject, addScan, showScan, removeScan, quickView, setStep,
+    clearError, clearNotice, closeProject, addScan, showScan, removeScan, quickView, setStep, undo, redo, canUndo, canRedo,
   } = useApp();
   const fileInput = useRef<HTMLInputElement>(null);
   const inWorkspace = project !== null || scan !== null;
@@ -32,6 +32,18 @@ export function App() {
     const t = setTimeout(clearNotice, 6000);
     return () => clearTimeout(t);
   }, [notice, clearNotice]);
+
+  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes. Inside a text box the browser's own undo is left alone.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.target instanceof HTMLInputElement) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); void undo(); }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); void redo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
 
   const takeFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.obj')) {
@@ -72,6 +84,12 @@ export function App() {
                 );
               })}
             </nav>
+            {project && (
+              <div className="history">
+                <button className="small" disabled={!canUndo} onClick={() => void undo()} title="Undo (Ctrl+Z / ⌘Z)">↶ Undo</button>
+                <button className="small" disabled={!canRedo} onClick={() => void redo()} title="Redo (Ctrl+Shift+Z / ⇧⌘Z)">↷ Redo</button>
+              </div>
+            )}
             {project && (
               <div className={`save save--${saveState}`}>
                 {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : 'Not saved'}
