@@ -92,6 +92,18 @@ export async function copyGraphicIntoProject(dir: FileSystemDirectoryHandle, fil
   return `${FOLDERS.graphics}/${name}`;
 }
 
+/** Copies a photo into photos/ and returns its path. The original is left untouched. */
+export async function copyPhotoIntoProject(dir: FileSystemDirectoryHandle, file: File): Promise<string> {
+  const folder = await dir.getDirectoryHandle(FOLDERS.photos, { create: true });
+  const taken: string[] = [];
+  for await (const name of folder.keys()) taken.push(name);
+  const name = uniqueName(safeFileName(file.name), taken);
+  const w = await (await folder.getFileHandle(name, { create: true })).createWritable();
+  await w.write(file);
+  await w.close();
+  return `${FOLDERS.photos}/${name}`;
+}
+
 /** Writes a text file into export/ (replacing an older export of the same name) and returns its path. */
 export async function writeExport(dir: FileSystemDirectoryHandle, fileName: string, text: string): Promise<string> {
   const folder = await dir.getDirectoryHandle(FOLDERS.export, { create: true });

@@ -1,5 +1,6 @@
 /** A flat surface of the boat, picked from a scan and stored in the project. */
-import { autoClean, DEFAULT_CLEAN, outlinePolygon, resolveCorners, type Anchor, type CleanOptions, type SideInfo } from './cleanOutline';
+import { autoClean, DEFAULT_CLEAN, outlinePolygon, resolveCorners, sidePath, type Anchor, type CleanOptions, type SideInfo } from './cleanOutline';
+import type { SketchOutline } from './sketch/geometry';
 import { writeDxf } from './dxf';
 import type { RawOutline } from './outline';
 import { bounds, extendToMeet, polygonArea } from './poly';
@@ -30,6 +31,8 @@ export interface Surface {
   };
   /** tape measurements taken on the boat, to check the drawing against reality */
   checks?: Check[];
+  /** set when the surface was drawn by hand: its outline comes from this sketch */
+  sketchId?: string;
   createdAt: string;
 }
 
@@ -128,4 +131,46 @@ export function surfaceToDxf(s: Surface): string {
       ...s.raw.holes.map((h) => ({ layer: 'SCAN_HOLES', points: shift(h.points) })),
     ],
   );
+}
+
+/** A flat plane for drawings made by hand (they have no position in a scan). */
+const FLAT_PLANE: Plane = { origin: [0, 0, 0], normal: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] };
+
+/** The surface outline for a closed sketch outline: corners and curved sides exactly as drawn. */
+function outlineFromSketch(o: SketchOutline): Surface['outline'] {
+  const anchors: Anchor[] = [];
+  let at = 0;
+  o.corners.forEach((c, i) => {
+    anchors.push({ at, manual: [c[0], c[1]], ...(o.curves[i] ? { curve: true } : {}) });
+    at += 1 + (o.curves[i]?.length ?? 0) / 2;
+  });
+  const sides = o.corners.map((_, i) => {
+    const pts = sidePath({ corners: o.corners, curves: o.curves }, i);
+    let length = 0;
+    for (let k = 0; k + 3 < pts.length; k += 2) length += Math.hypot(pts[k + 2] - pts[k], pts[k + 3] - pts[k + 1]);
+    return { length, maxDeviation: 0 };
+  });
+  return { options: { ...DEFAULT_CLEAN }, edge: o.polygon, anchors, corners: o.corners.map((c) => [c[0], c[1]]), sides, curves: o.curves.map((c) => (c ? [...c] : null)) };
+}
+
+export function surfaceFromSketch(args: { id: string; name: string; sketchId: string; outline: SketchOutline }, now = new Date()): Surface {
+  return {
+    id: args.id, name: args.name, scanId: '', sketchId: args.sketchId,
+    plane: FLAT_PLANE,
+    scannedArea: Math.abs(polygonArea(args.outline.polygon)),
+    flatness: { rms: 0, max: 0 },
+    raw: { outer: args.outline.polygon, holes: args.outline.inner.map((h) => ({ points: h, area: Math.abs(polygonArea(h)) })) },
+    outline: outlineFromSketch(args.outline),
+    createdAt: now.toISOString(),
+  };
+}
+
+/** Keeps a hand-drawn surface in step with its sketch. */
+export function updateFromSketch(surface: Surface, outline: SketchOutline): Surface {
+  return {
+    ...surface,
+    scannedArea: Math.abs(polygonArea(outline.polygon)),
+    raw: { outer: outline.polygon, holes: outline.inner.map((h) => ({ points: h, area: Math.abs(polygonArea(h)) })) },
+    outline: outlineFromSketch(outline),
+  };
 }

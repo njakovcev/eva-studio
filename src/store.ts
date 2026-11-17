@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
-import { createSurface, surfaceToDxf, type Surface } from './core/surface';
+import { createSurface, surfaceFromSketch, surfaceToDxf, updateFromSketch, type Surface } from './core/surface';
+import { emptySketch, type Sketch, type SketchPhoto } from './core/sketch/model';
+import { sketchOutline } from './core/sketch/geometry';
+import { refreshReferences } from './core/sketch/solver';
 import { createPanel, splitPanel, type EdgePoint, type Panel } from './core/panel';
 import { createDesign, designedPanelToDxf, type Design, type DesignLibrary } from './core/design';
 import type { Graphic, StoredArtwork } from './core/artwork';
@@ -15,7 +18,7 @@ import type { ProjectSettings } from './core/project';
 import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
   copyScanIntoProject, createProjectFolder, ensurePermission, openProjectFolder,
-  copyGraphicIntoProject, readProjectFile, rememberProject, saveProject, writeExport,
+  copyGraphicIntoProject, copyPhotoIntoProject, readProjectFile, rememberProject, saveProject, writeExport,
 } from './io/projectFolder';
 
 let lastLibrary: DesignLibrary = { artworks: [], patterns: [] };
@@ -27,6 +30,7 @@ export function libraryOf(project: Project): DesignLibrary {
 
 export interface OpenScan extends LoadedScan { id: string; name: string }
 export type Step = 'scans' | 'surfaces' | 'panels' | 'design' | 'export';
+export type SketchTool = 'select' | 'line' | 'arc' | 'tangentArc' | 'circle' | 'spline' | 'dimension' | 'fillet' | 'photoScale' | 'photoAlign' | 'photoMove';
 /** a side or corner of the open panel that is pointed at (in the table or in the drawing) */
 export type PanelFocus = { kind: 'side' | 'corner' | 'cutout'; index: number } | null;
 
@@ -54,6 +58,10 @@ interface State {
   /** the current arrangement of panels on sheets (not saved; recomputed when panels or rules change) */
   nest: NestResult | null;
   arranging: boolean;
+  /** sketch open in the sketch editor, its active tool and what is selected in it */
+  openSketchId: string | null;
+  sketchTool: SketchTool;
+  sketchSelection: string[];
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -96,6 +104,15 @@ interface State {
   removeGraphic(id: string): Promise<void>;
   addPatternFromSvg(file: File): Promise<void>;
   arrange(): Promise<void>;
+  newSketch(): Promise<void>;
+  openSketch(id: string | null): void;
+  setSketchTool(tool: SketchTool): void;
+  setSketchSelection(ids: string[]): void;
+  /** `save: false` while dragging; the last change of a gesture must save. Keeps its surface in step. */
+  updateSketch(sketch: Sketch, save?: boolean): Promise<void>;
+  deleteSketch(id: string): Promise<void>;
+  makeSurfaceFromSketch(id: string): Promise<void>;
+  setSketchPhoto(file: File): Promise<void>;
   exportSheets(): Promise<void>;
   splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
   updateSettings(change: Partial<ProjectSettings>): Promise<void>;
@@ -161,7 +178,8 @@ export const useApp = create<State>((set, get) => {
     set({
       openSurfaceId: fix(openSurfaceId, now.surfaces, target.surfaces, () => true),
       openPanelId: fix(openPanelId, now.panels, target.panels, (a, b) => a.surfaceId === b.surfaceId),
-      panelFocus: null, measuring: false, splitting: false, graphicFocus: null,
+      panelFocus: null, measuring: false, splitting: false, graphicFocus: null, sketchSelection: [],
+      openSketchId: get().openSketchId && target.sketches.some((k) => k.id === get().openSketchId) ? get().openSketchId : null,
     });
     await persist(target, false);
   };
@@ -178,7 +196,7 @@ export const useApp = create<State>((set, get) => {
     return { id: newId(), artworkId: art.id, x: Math.round((b.minX + b.maxX) / 2), y: Math.round((b.minY + b.maxY) / 2), width: Math.max(20, width), angle: 0, mode, clearance: 10 };
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, nest: null, arranging: false, error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, nest: null, arranging: false, openSketchId: null, sketchTool: 'select' as SketchTool, sketchSelection: [] as string[], error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
@@ -236,7 +254,7 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null, graphicFocus: null }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null, graphicFocus: null, openSketchId: null, sketchTool: 'select', sketchSelection: [] }),
     selectRegion: (id) => set({ selectedRegion: id }),
 
     addSurfaceFromRegion: async () => {
@@ -253,7 +271,12 @@ export const useApp = create<State>((set, get) => {
       }
     },
 
-    openSurface: (id) => set({ openSurfaceId: id, measuring: false }),
+    openSurface: (id) => {
+      // a surface drawn by hand is edited in its sketch
+      const sketchId = get().project?.surfaces.find((s) => s.id === id)?.sketchId;
+      if (sketchId && get().project?.sketches.some((k) => k.id === sketchId)) { get().openSketch(sketchId); return; }
+      set({ openSurfaceId: id, measuring: false });
+    },
     setMeasuring: (on) => set({ measuring: on }),
 
     updateSurface: async (surface, save = true) => {
@@ -267,7 +290,8 @@ export const useApp = create<State>((set, get) => {
       const { project, openSurfaceId } = get();
       if (!project) return;
       if (openSurfaceId === id) set({ openSurfaceId: null });
-      await persist({ ...project, surfaces: project.surfaces.filter((s) => s.id !== id) });
+      // a drawing whose surface is deleted stays, and can be made a surface again
+      await persist({ ...project, surfaces: project.surfaces.filter((s) => s.id !== id), sketches: project.sketches.map((k) => (k.surfaceId === id ? { ...k, surfaceId: undefined } : k)) });
     },
 
     exportSurfaceDxf: async (id) => {
@@ -475,6 +499,70 @@ export const useApp = create<State>((set, get) => {
         set({ error: `The sheet files could not be saved: ${message(e)}` });
       }
     },
+
+    newSketch: async () => {
+      const { project } = get();
+      if (!project) return;
+      const name = uniqueName(`Drawing ${project.sketches.length + 1}`, project.sketches.map((k) => k.name));
+      const sketch = emptySketch(newId(), name);
+      set({ openSketchId: sketch.id, openSurfaceId: null, sketchTool: 'line', sketchSelection: [] });
+      await persist({ ...project, sketches: [...project.sketches, sketch] });
+    },
+
+    openSketch: (id) => set({ openSketchId: id, openSurfaceId: null, sketchTool: 'select', sketchSelection: [] }),
+    setSketchTool: (tool) => set({ sketchTool: tool }),
+    setSketchSelection: (ids) => set({ sketchSelection: ids }),
+
+    updateSketch: async (sketch, save = true) => {
+      const { project } = get();
+      if (!project) return;
+      const fresh = refreshReferences(sketch);
+      let surfaces = project.surfaces;
+      if (save && fresh.surfaceId) {
+        const o = sketchOutline(fresh);
+        // while the outline is open the surface keeps its last good shape
+        if (o.ok) surfaces = surfaces.map((s) => (s.id === fresh.surfaceId ? updateFromSketch(s, o.outline) : s));
+      }
+      const next = { ...project, surfaces, sketches: project.sketches.map((k) => (k.id === fresh.id ? fresh : k)) };
+      if (save) await persist(next); else set({ project: next });
+    },
+
+    deleteSketch: async (id) => {
+      const { project } = get();
+      if (!project) return;
+      if (get().openSketchId === id) set({ openSketchId: null });
+      // its surface stays (with its last shape), it just can no longer be edited as a drawing
+      await persist({ ...project, sketches: project.sketches.filter((k) => k.id !== id), surfaces: project.surfaces.map((s) => (s.sketchId === id ? { ...s, sketchId: undefined } : s)) });
+    },
+
+    makeSurfaceFromSketch: async (id) => {
+      const { project } = get();
+      const sketch = project?.sketches.find((k) => k.id === id);
+      if (!project || !sketch) return;
+      const o = sketchOutline(sketch);
+      if (!o.ok) { set({ error: o.message }); return; }
+      const name = uniqueName(sketch.name, project.surfaces.map((s) => s.name));
+      const surface = surfaceFromSketch({ id: newId(), name, sketchId: sketch.id, outline: o.outline });
+      set({ notice: `“${name}” is now a surface. Make panels from it in step 3; changes to the drawing carry over.` });
+      await persist({ ...project, surfaces: [...project.surfaces, surface], sketches: project.sketches.map((k) => (k.id === id ? { ...k, surfaceId: surface.id } : k)) });
+    },
+
+    setSketchPhoto: (file) => run(`Reading ${file.name}…`, async () => {
+      const { project, dir, openSketchId } = get();
+      const sketch = project?.sketches.find((k) => k.id === openSketchId);
+      if (!project || !dir || !sketch) return;
+      let size: { width: number; height: number };
+      try { const bmp = await createImageBitmap(file); size = { width: bmp.width, height: bmp.height }; bmp.close(); }
+      catch { throw new Error(`“${file.name}” could not be read as a picture. Use a JPG or PNG photo.`); }
+      const path = await copyPhotoIntoProject(dir, file);
+      // until it is set from a known distance, show the photo about 4 m wide, centred on the drawing
+      const scale = 4000 / size.width;
+      let cx = 0, cy = 0;
+      if (sketch.points.length) { for (const p of sketch.points) { cx += p.x; cy += p.y; } cx /= sketch.points.length; cy /= sketch.points.length; }
+      const photo: SketchPhoto = { file: path, widthPx: size.width, heightPx: size.height, scale, x: cx - (size.width * scale) / 2, y: cy + (size.height * scale) / 2, angle: 0, opacity: 0.6 };
+      set({ sketchTool: 'photoScale', notice: 'Now set the photo’s scale: click two points on the photo whose distance you know, then type that distance.' });
+      await persist({ ...project, sketches: project.sketches.map((k) => (k.id === sketch.id ? { ...k, photo } : k)) });
+    }),
 
     exportPanelDxf: async (id) => {
       const { project, dir } = get();

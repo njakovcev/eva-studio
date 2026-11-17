@@ -13,10 +13,11 @@ import type { Panel } from './panel';
 import type { Design } from './design';
 import type { StoredArtwork } from './artwork';
 import type { StoredPattern } from './patterns';
+import type { Sketch } from './sketch/model';
 
 export const FORMAT_VERSION = 1;
 export const PROJECT_FILE = 'project.json';
-export const FOLDERS = { scans: 'scans', graphics: 'graphics', export: 'export' } as const;
+export const FOLDERS = { scans: 'scans', graphics: 'graphics', photos: 'photos', export: 'export' } as const;
 
 export interface ScanRef {
   id: string;
@@ -75,6 +76,8 @@ export interface Project {
   artworks: StoredArtwork[];
   /** The user's own repeating patterns. */
   patterns: StoredPattern[];
+  /** Surfaces drawn by hand (over a photo, with tape measurements). */
+  sketches: Sketch[];
 }
 
 export function defaultSettings(): ProjectSettings {
@@ -116,6 +119,7 @@ export function createProject(info: { name: string; client?: string; boat?: stri
     designs: [],
     artworks: [],
     patterns: [],
+    sketches: [],
   };
 }
 
@@ -151,6 +155,7 @@ export function parseProject(text: string): Project {
   p.designs = Array.isArray(p.designs) ? p.designs : [];
   p.artworks = Array.isArray(p.artworks) ? p.artworks : [];
   p.patterns = Array.isArray(p.patterns) ? p.patterns : [];
+  p.sketches = Array.isArray(p.sketches) ? p.sketches : [];
   p.formatVersion = FORMAT_VERSION;
   return p;
 }

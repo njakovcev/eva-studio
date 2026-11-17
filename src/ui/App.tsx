@@ -9,6 +9,7 @@ import { PanelEditor } from './PanelEditor';
 import { PanelsSide } from './PanelsSide';
 import { StartScreen } from './StartScreen';
 import { SurfacesSide } from './SurfacesSide';
+import { SketchEditor } from './SketchEditor';
 import { ViewerPane } from './ViewerPane';
 import { count, size, squareMetres } from './format';
 
@@ -22,17 +23,18 @@ const STEPS: { id: string; label: string; ready: boolean }[] = [
 
 export function App() {
   const {
-    project, scan, step, openSurfaceId, openPanelId, designSurfaceId, error, notice, saveState, busy,
+    project, scan, step, openSurfaceId, openSketchId, openPanelId, designSurfaceId, error, notice, saveState, busy,
     clearError, clearNotice, closeProject, addScan, showScan, removeScan, quickView, setStep, undo, redo, canUndo, canRedo,
   } = useApp();
   const fileInput = useRef<HTMLInputElement>(null);
   const inWorkspace = project !== null || scan !== null;
   const openSurface = project?.surfaces.find((s) => s.id === openSurfaceId);
+  const openSketch = step === 'surfaces' ? project?.sketches.find((k) => k.id === openSketchId) : undefined;
   const openPanel = project?.panels.find((p) => p.id === openPanelId);
   const designSurface = step === 'design' ? project?.surfaces.find((s) => s.id === designSurfaceId) : undefined;
   const openDesign = designSurface && project?.designs.find((d) => d.surfaceId === designSurface.id);
   const showSheets = step === 'export' && project !== null;
-  const editing = openSurface ?? openPanel ?? openDesign ?? (showSheets || undefined);
+  const editing = openSketch ?? openSurface ?? openPanel ?? openDesign ?? (showSheets || undefined);
 
   useEffect(() => {
     if (!notice) return;
@@ -145,6 +147,7 @@ export function App() {
             </aside>
             {/* the 3D view stays mounted (hidden) while the 2D editor is open, so the scan is not rebuilt */}
             <div className={editing ? 'pane pane--hidden' : 'pane'}><ViewerPane onDropFile={takeFile} /></div>
+            {openSketch && <div className="pane"><SketchEditor sketch={openSketch} /></div>}
             {openSurface && <div className="pane"><OutlineEditor surface={openSurface} /></div>}
             {openPanel && <div className="pane"><PanelEditor panel={openPanel} surface={project?.surfaces.find((s) => s.id === openPanel.surfaceId)} /></div>}
             {showSheets && <div className="pane"><ExportView /></div>}

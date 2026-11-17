@@ -4,6 +4,7 @@ Owner is not a programmer; Claude writes and maintains all code. Favour simple, 
 
 ## Scope
 - Boat scan (OBJ, mm) → flat surfaces → EVA panels → milled design → DXF/PDF → later G-code. Nothing beyond G-code generation.
+- A surface can also be drawn by hand (Surfaces → Draw a surface): a parametric sketch over a photo, set by tape measurements (`src/core/sketch/`). Its surface follows the sketch.
 - v1 handles flat surfaces only. No unrolling of curved surfaces, no design carried between surfaces at different angles.
 - EVA sheet: 6 mm, two 3 mm layers of different colour, 2400 × 1200 mm. Every design is made by milling the top layer.
 - Scanner alignment markers appear as small holes in the scan; they are never cut.

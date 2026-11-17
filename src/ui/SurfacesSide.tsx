@@ -2,31 +2,44 @@ import { useState } from 'react';
 import { checkLength, recleanSurface, lengthErrorFromBulge, removeSideExtend, surfaceArea, withAnchors, MARKER_MAX_AREA, type Surface } from '../core/surface';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
+import { SketchSide } from './SketchSide';
 
 /** Above this, an area is called out as not flat (mm). */
 const FLAT_LIMIT = 3;
 
 export function SurfacesSide() {
-  const { project, scan, selectedRegion, openSurfaceId, selectRegion, addSurfaceFromRegion, openSurface } = useApp();
+  const { project, scan, selectedRegion, openSurfaceId, openSketchId, selectRegion, addSurfaceFromRegion, openSurface, openSketch, newSketch } = useApp();
   if (!project) return null;
+  const sketch = project.sketches.find((k) => k.id === openSketchId);
+  if (sketch) return <SketchSide key={sketch.id} sketch={sketch} />;
   const surface = project.surfaces.find((s) => s.id === openSurfaceId);
   if (surface) return <SurfaceDetails surface={surface} />;
+  const loose = project.sketches.filter((k) => !project.surfaces.some((s) => s.id === k.surfaceId));
 
   const region = scan && selectedRegion !== null ? scan.regions[selectedRegion] : null;
   return (
     <>
       <div className="side__head"><h2>Surfaces</h2></div>
-      {project.surfaces.length === 0 && <p className="muted">No surfaces yet. Pick a flat area of the scan below or by clicking it in 3D, then add it.</p>}
+      {project.surfaces.length === 0 && <p className="muted">No surfaces yet. Pick a flat area of the scan below or by clicking it in 3D, then add it. Or draw one over a photo, with your own tape measurements.</p>}
       <ul className="list">
         {project.surfaces.map((s) => (
           <li key={s.id}>
             <button className="list__main" onClick={() => openSurface(s.id)}>
               <strong>{s.name}</strong>
-              <span>{squareMetres(surfaceArea(s))} · {s.outline.corners.length} corners</span>
+              <span>{squareMetres(surfaceArea(s))} · {s.outline.corners.length} corners{s.sketchId ? ' · drawn' : ''}</span>
+            </button>
+          </li>
+        ))}
+        {loose.map((k) => (
+          <li key={k.id}>
+            <button className="list__main" onClick={() => openSketch(k.id)}>
+              <strong>{k.name}</strong>
+              <span>drawing · not a surface yet</span>
             </button>
           </li>
         ))}
       </ul>
+      <button onClick={() => void newSketch()}>+ Draw a surface</button>
 
       <h3>Flat areas found in this scan</h3>
       {!scan && <p className="muted">Open a scan first (step 1).</p>}

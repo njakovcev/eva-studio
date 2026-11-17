@@ -170,3 +170,48 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .ops td { vertical-align: top; }
 .opening__dist label:has(select) { flex: 1; min-width: 0; }
 .opening__dist small { flex-basis: 100%; }
+
+/* ---- sketch editor ---- */
+.sk-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 10px; }
+.sk-tools button { display: flex; justify-content: space-between; align-items: center; }
+.sk-tools button.on, .sk-actions button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.sk-tools kbd { font: 11px ui-monospace, monospace; opacity: .6; }
+.sk-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.list--tight li { padding: 2px 0; align-items: center; }
+.notice--info { margin: 0 0 8px; font-size: 13px; }
+.notice--ok { border-left-color: var(--ok); margin: 0 0 8px; font-size: 13px; }
+.sides tr.on td { background: color-mix(in srgb, #ff8c1a 15%, transparent); }
+.editor--pick svg { cursor: crosshair; }
+.sk-fill { fill: color-mix(in srgb, var(--ok) 10%, transparent); stroke: none; }
+.sk-ent { fill: none; stroke: var(--text); stroke-linecap: round; }
+.sk-ent.sk-free { stroke: #1e7be0; }
+.sk-ent.sk-construction { stroke: var(--muted); }
+.sk-ent.on { stroke: #ff8c1a; }
+.sk-pt { fill: var(--text); stroke: var(--canvas); }
+.sk-pt.sk-free { fill: #1e7be0; }
+.sk-pt.open { fill: var(--danger); }
+.sk-pt.on { fill: #ff8c1a; }
+.sk-pt--aux { fill: var(--muted); }
+.sk-preview { fill: none; stroke: #ff8c1a; }
+.sk-pick { fill: none; stroke: #ff8c1a; }
+.sk-snap { fill: none; stroke: var(--ok); }
+.sk-dim line, .sk-dim path { stroke: #6b4fbb; }
+.sk-dim text { fill: #6b4fbb; stroke: var(--canvas); paint-order: stroke; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.sk-dim.ref line, .sk-dim.ref path { stroke: var(--muted); }
+.sk-dim.ref text { fill: var(--muted); font-weight: 400; }
+.sk-dim.on line, .sk-dim.on path { stroke: #ff8c1a; }
+.sk-dim.on text { fill: #ff8c1a; }
+.sk-glyph rect { fill: var(--panel); stroke: var(--muted); }
+.sk-glyph text { fill: var(--muted); font-weight: 600; }
+.sk-glyph.on rect { stroke: #ff8c1a; }
+.sk-glyph.on text { fill: #ff8c1a; }
+.sk-popover { position: absolute; z-index: 5; width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 8px; }
+.sk-popover__row { display: flex; gap: 6px; align-items: center; }
+.sk-popover__row input { width: 90px; font-size: 16px; }
+.sk-popover__kinds { display: flex; gap: 4px; }
+.sk-popover__kinds button { flex: 1; font-size: 12px; padding: 3px 4px; }
+.sk-popover__kinds button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.sk-popover p { margin: 0; font-size: 12px; }
+.lg-free { border-top-color: #1e7be0; }
+.lg-def { border-top-color: var(--text); }
+.lg-open { width: 8px; height: 8px; border: 0; background: var(--danger); border-radius: 50%; }
