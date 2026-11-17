@@ -23,6 +23,8 @@ export function Milled({ d, machining, depth, topColor, bottomColor }: { d: Pane
       ]).filter((x) => x.w > 0).map((x) => (
         <path key={x.key} d={x.paths} fill="none" stroke={x.c} strokeWidth={x.w} strokeLinecap="round" strokeLinejoin="round" />
       ))}
+      {/* strips of top colour too thin to hold */}
+      {d.thinStrips.length > 0 && <path fillRule="evenodd" fill="#e5484d" fillOpacity={0.9} d={d.thinStrips.map(svgPath).join('')}><title>Too thin: this strip of top colour can tear or break off</title></path>}
     </>
   );
 }

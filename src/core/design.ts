@@ -61,6 +61,8 @@ export interface PanelDesign {
   millLength: number;
   /** total area milled out, mm² */
   pocketArea: number;
+  /** where the top colour that is left is narrower than the project's narrowest strip (shown red) */
+  thinStrips: Region;
   warnings: string[];
 }
 
@@ -68,7 +70,7 @@ const closedLength = (flat: number[]) => { let s = 0; const n = flat.length / 2;
 const closeLine = (r: number[]) => [...r, r[0], r[1]];
 
 const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; key: string; result: PanelDesign }>();
-const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}|${JSON.stringify(m.tools)}|${JSON.stringify(m.passes)}`;
+const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}|${JSON.stringify(m.tools)}|${JSON.stringify(m.passes)}|${m.minStrip}|${JSON.stringify(m.edge)}`;
 
 /** Everything that gets milled into one panel. */
 export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): PanelDesign {
@@ -168,8 +170,31 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
 
   const shownBorder = borderLines ? null : border;
   const byTool = [...extra.values()].sort((a, b) => a.tool.number - b.tool.number);
+
+  // --- what is left of the top colour, and where it gets too thin to hold ---
+  const thinStrips = machining.minStrip > 0 ? findThinStrips() : [];
+  function findThinStrips(): Region {
+    const holes = (panel.cutouts ?? []).map((c) => cutoutOutline(c).flat);
+    const body = holes.length ? subtract([cut.flat], holes) : [cut.flat];
+    const loop = (f: number[]) => [...f, f[0], f[1]];
+    const grooves = (lines: number[][], t: Tool) => thicken(lines, grooveFootprint(machining, t, design.depth).width / 2);
+    // a cleared shape reaches further at the surface: its sloped sides (2.6 mm for T11 at 3.5 deep)
+    const slope = (t: Tool) => Math.max(0, radiusAtHeight(t, design.depth) - radiusAtHeight(t, Math.max(0, design.depth - machining.topLayer)));
+    let milled = union(
+      grooves([...(shownBorder ? [loop(shownBorder.flat)] : []), ...(borderLines ?? []), ...pattern, ...graphicLines], machining.groove),
+      grow(pockets, slope(machining.pocket)),
+    );
+    for (const b of byTool) milled = union(milled, union(grooves(b.lines, b.tool), grow(b.pockets, slope(b.tool))));
+    // the rounded outer edge lowers the top all along the cut
+    if (machining.edge) milled = union(milled, subtract(body, grow(body, -machining.edge.slope)));
+    const top = subtract(body, milled);
+    const r = machining.minStrip / 2, thin = subtract(top, grow(grow(top, -r), r));
+    // leave out the slivers every sharp corner loses
+    return thin.filter((ring) => regionArea([ring]) > machining.minStrip * machining.minStrip);
+  }
+  if (thinStrips.length) warnings.push(`The top colour left between the milled parts is narrower than ${machining.minStrip} mm in ${thinStrips.length} place${thinStrips.length === 1 ? '' : 's'} (red in the preview). Such strips tear or break off. Move things apart, use a smaller tool for logos and text, or mill less deep.`);
   const result: PanelDesign = {
-    cut, border: shownBorder, borderLines, pattern, graphicLines, pockets, byTool,
+    cut, border: shownBorder, borderLines, pattern, graphicLines, pockets, byTool, thinStrips,
     millLength: (machining.passes.on ? 2 : 1) * ((shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines) + byTool.reduce((s, b) => s + linesLength(b.lines), 0)),
     pocketArea: regionArea(pockets) + byTool.reduce((s, b) => s + regionArea(b.pockets), 0),
     warnings,

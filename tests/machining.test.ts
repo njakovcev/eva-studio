@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { designedPanelToDxf, edgePaths } from '../src/core/design';
+import { createDesign, designedPanelToDxf, designPanel, edgePaths } from '../src/core/design';
 import { cutOutline, pointInPolygon, type Panel } from '../src/core/panel';
 import { createProject, parseProject, serializeProject } from '../src/core/project';
 import { effectiveGap, nestOptionsOf } from '../src/core/sheets';
@@ -119,4 +119,26 @@ describe('choosing tools', () => {
     expect(p.settings.tools[2].name).toBe('mine'); // their own T22 stays, as T12
     expect(p.settings.machining).toMatchObject({ groove: 11, pocket: 12, edge: { tool: 10 } });
   });
+});
+
+describe('strips of top colour', () => {
+  const settings = createProject({ name: 'x' }).settings;
+  const { machining } = machiningOf(settings);
+  const design = (inset: number) => ({ ...createDesign('d', 's'), border: { on: true, inset }, pattern: { kind: 'none', params: {}, angle: 0, originX: 0, originY: 0 } });
+  it('are fine when the border groove is far enough from the rounded edge', () => {
+    // rounded edge reaches 5.1 mm in, the border groove (T11, 3.5 deep, two passes) 5.2 mm each side of its line
+    const d = designPanel(panel(), design(15), undefined, machining);
+    expect(d.thinStrips).toEqual([]);
+    expect(d.warnings.join(' ')).not.toMatch(/narrower than 3 mm/);
+  });
+  it('are found when the border groove comes too close to the rounded edge', () => {
+    const d = designPanel(panel(), design(12), undefined, machining); // 12 − 5.2 − 5.1 = 1.7 mm left
+    expect(d.thinStrips.length).toBeGreaterThan(0);
+    expect(d.warnings.join(' ')).toMatch(/narrower than 3 mm/);
+  });
+  it('can be switched off', () => {
+    const off = machiningOf({ ...settings, machining: { ...settings.machining, minStrip: 0 } }).machining;
+    expect(designPanel(panel(), design(12), undefined, off).thinStrips).toEqual([]);
+  });
+  it('keeps new panels 25 mm from the sheet edge', () => expect(settings.sheetMargin).toBe(25));
 });

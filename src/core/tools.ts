@@ -107,9 +107,11 @@ export interface Machining {
   tools: Tool[];
   /** grooves in two passes, one each way */
   passes: GroovePasses;
+  /** strips of top colour narrower than this (mm) are pointed out; 0: not checked */
+  minStrip: number;
 }
 
-export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3, tools: DEFAULT_TOOLS, passes: NO_PASSES };
+export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3, tools: DEFAULT_TOOLS, passes: NO_PASSES, minStrip: 0 };
 
 /** How wide a groove ends up (both passes together), and its line of bottom colour. */
 export function grooveFootprint(m: Machining, tool: Tool, depth: number): { width: number; colour: number } {
@@ -123,10 +125,12 @@ export interface MachiningSettings {
   pocket: number;
   edge: { on: boolean; tool: number; bottomDepth: number; leftAtEdge: number };
   passes: GroovePasses;
+  /** narrowest strip of top colour that holds up, mm (0: not checked) */
+  minStrip: number;
 }
 
 export function defaultMachiningSettings(): MachiningSettings {
-  return { groove: 11, pocket: 11, edge: { on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 }, passes: defaultGroovePasses() };
+  return { groove: 11, pocket: 11, edge: { on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 }, passes: defaultGroovePasses(), minStrip: 3 };
 }
 
 /**
@@ -181,7 +185,7 @@ function workOutMachining(settings: Pick<ProjectSettings, 'tools' | 'machining' 
     if (!(passes.offset > 0)) { problems.push('The offset between the two groove passes must be more than 0 mm.'); passesOk = false; }
     else if (passes.offset >= tip) { problems.push(`The two groove passes are ${passes.offset} mm apart, as wide as the tip of T${groove.number} (${tip} mm) or wider: a ridge would stay in the middle. Use a smaller offset; until then grooves are milled in one pass.`); passesOk = false; }
   }
-  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer, tools, passes: passesOk ? passes : { ...passes, on: false } }, problems };
+  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer, tools, passes: passesOk ? passes : { ...passes, on: false }, minStrip: m.minStrip ?? 3 }, problems };
 }
 
 /** Space panels need between them on a sheet so the edge tool of one does not cut into its neighbour. */

@@ -148,6 +148,8 @@ function MachiningSettings({ settings, depths }: { settings: ProjectSettings; de
           <small>Each pass is moved half the offset to one side and runs the other way, so both walls are finished the same way. The groove stays centred and gets {m.passes.offset} mm wider. Which way is cleaner in EVA: try both on an offcut.</small>
         </>
       )}
+      <div className="row"><span>Narrowest strip of top colour</span><Num value={m.minStrip} onCommit={(v) => setM({ minStrip: Math.max(0, v) })} /><span>mm</span></div>
+      <small>Thinner strips left between grooves, filled shapes and the rounded edge are shown red and warned about (0: no check).</small>
       <label className="field">Clearing out (filled shapes)
         {pick(m.pocket, (n) => setM({ pocket: n }))}
         <small>{widths(machining.pocket)}</small>

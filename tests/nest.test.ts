@@ -82,7 +82,7 @@ describe('sheet files', () => {
   const result = nest(nestParts(project.panels), nestOptionsOf(project.settings));
 
   it('uses the project rules', () => {
-    expect(nestOptionsOf(project.settings)).toMatchObject({ sheetLength: 2400, sheetWidth: 1200, margin: 10, gap: 9.8, rotations: [0, 180] }); // 8 raised for the rounded edge
+    expect(nestOptionsOf(project.settings)).toMatchObject({ sheetLength: 2400, sheetWidth: 1200, margin: 25, gap: 9.8, rotations: [0, 180] }); // gap 8 raised for the rounded edge
     expect(result.sheets).toBe(1);
     const s = summarize(project, result)[0];
     expect(s.panels).toBe(3);

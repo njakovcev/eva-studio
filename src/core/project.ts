@@ -84,7 +84,7 @@ export function defaultSettings(): ProjectSettings {
     defaultCornerRadius: 20,
     panelGap: 4,
     nestGap: 8,
-    sheetMargin: 10,
+    sheetMargin: 25, // a narrow waste strip along the sheet edge is not held by the vacuum (test 17. 11.)
     turning: 'half',
     tools: DEFAULT_TOOLS.map((t) => ({ ...t, profile: { ...t.profile } })),
     machining: defaultMachiningSettings(),
