@@ -55,7 +55,7 @@ describe('two passes in the files', () => {
   it('writes every groove twice, the border as two loops one each way', () => {
     const one = designedPanelToDxf(panel, undefined, design, undefined, machiningOf({ ...settings, machining: { ...settings.machining, passes: { ...settings.machining.passes, on: false } } }).machining);
     const two = designedPanelToDxf(panel, undefined, design, undefined, machiningOf(settings).machining);
-    const count = (dxf: string) => dxf.split('POLYLINE\r\n  8\r\n1_T11_GROOVE_3MM').length - 1 || dxf.split(/POLYLINE\r?\n8\r?\n1_T11_GROOVE_3MM/).length - 1;
+    const count = (dxf: string) => dxf.split('POLYLINE\r\n  8\r\n1_T11_GROOVE_3_5MM').length - 1 || dxf.split(/POLYLINE\r?\n8\r?\n1_T11_GROOVE_3_5MM/).length - 1;
     expect(count(two)).toBe(2 * count(one));
     expect(count(one)).toBeGreaterThan(1);
   });

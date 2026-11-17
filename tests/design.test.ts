@@ -116,7 +116,7 @@ describe('design of a panel', () => {
     const fine = designPanel(p, { ...createDesign('d', 's'), pattern: { kind: 'lines', params: { size: 10 }, angle: 0, originX: 0, originY: 0 } });
     expect(fine.warnings.join(' ')).toMatch(/very fine/);
     const dxf = designedPanelToDxf(p, undefined, createDesign('d', 's'));
-    expect(dxf.split('1_T11_GROOVE_3MM').length - 1).toBeGreaterThan(8);
+    expect(dxf.split('1_T11_GROOVE_3_5MM').length - 1).toBeGreaterThan(8);
     expect(designedPanelToDxf(p, undefined, undefined)).toContain('5_KNIFE_OUTER');
   });
 });
@@ -188,10 +188,10 @@ describe('artwork on a panel', () => {
     expect(d.byTool.map((b) => b.tool.number)).toEqual([12]);
     expect(d.byTool[0].lines.length).toBe(1);
     const dxf = designedPanelToDxf(p, undefined, { ...base, graphics: [{ ...g, tool: 12 }] }, lib);
-    for (const layer of ['1_T11_GROOVE_3MM', '1_T12_GROOVE_3MM', '2_T12_POCKET_3MM']) expect(dxf, layer).toContain(layer);
+    for (const layer of ['1_T11_GROOVE_3_5MM', '1_T12_GROOVE_3_5MM', '2_T12_POCKET_3_5MM']) expect(dxf, layer).toContain(layer);
     // the layer table lists them in running order
     const table = dxf.slice(0, dxf.indexOf('ENTITIES'));
-    expect(table.indexOf('1_T12_GROOVE_3MM')).toBeLessThan(table.indexOf('2_T11_POCKET_3MM'));
+    expect(table.indexOf('1_T12_GROOVE_3_5MM')).toBeLessThan(table.indexOf('2_T11_POCKET_3_5MM'));
     // choosing the project's own tool is the same as no choice
     expect(designPanel(p, { ...base, graphics: [{ ...g, tool: 11 }] }, lib).byTool.length).toBe(0);
     // a tool that is no longer in the list: the project's tool, with a warning
@@ -202,7 +202,7 @@ describe('artwork on a panel', () => {
 
   it('writes one DXF layer per operation', () => {
     const dxf = designedPanelToDxf({ ...p, cutouts: [{ id: 'o', kind: 'circle', center: [100, 100], diameter: 50 }] }, undefined, { ...base, graphics: [g] }, lib);
-    for (const layer of ['1_T11_GROOVE_3MM', '2_T11_POCKET_3MM', '4_KNIFE_INNER', '5_KNIFE_OUTER']) expect(dxf, layer).toContain(layer);
+    for (const layer of ['1_T11_GROOVE_3_5MM', '2_T11_POCKET_3_5MM', '4_KNIFE_INNER', '5_KNIFE_OUTER']) expect(dxf, layer).toContain(layer);
     expect(regionArea([[0, 0, 1, 0, 1, 1, 0, 1]])).toBe(1);
   });
 });
