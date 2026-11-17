@@ -176,7 +176,11 @@ export function parseProject(text: string): Project {
   if (!p.project || typeof p.project.name !== 'string') throw new Error('project.json is missing the project name.');
   // Fill anything missing with defaults, so partial files still open.
   p.settings = { ...defaultSettings(), ...(p.settings ?? {}) };
-  p.settings.machining = { ...defaultMachiningSettings(), ...p.settings.machining, edge: { ...defaultMachiningSettings().edge, ...p.settings.machining?.edge } };
+  p.settings.machining = {
+    ...defaultMachiningSettings(), ...p.settings.machining,
+    edge: { ...defaultMachiningSettings().edge, ...p.settings.machining?.edge },
+    passes: { ...defaultMachiningSettings().passes, ...p.settings.machining?.passes },
+  };
   p.scans = Array.isArray(p.scans) ? p.scans : [];
   p.surfaces = Array.isArray(p.surfaces) ? p.surfaces : [];
   p.panels = Array.isArray(p.panels) ? p.panels : [];

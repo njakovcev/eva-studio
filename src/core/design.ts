@@ -13,7 +13,8 @@ import { defaultParams, patternById, patternLines, type PatternPlacement, type S
 import { bounds } from './poly';
 import { grow, intersect, regionArea, subtract, thicken, union, type Region } from './region';
 import { outlinePolygonOf, type Surface } from './surface';
-import { DEFAULT_MACHINING, grooveWidth, radiusAtHeight, type EdgeMilling, type Machining, type Tool } from './tools';
+import { DEFAULT_MACHINING, grooveFootprint, radiusAtHeight, type EdgeMilling, type Machining, type Tool } from './tools';
+import { firstPassShift, reverseBulged, twoWay } from './passes';
 
 export interface Design {
   id: string;
@@ -67,7 +68,7 @@ const closedLength = (flat: number[]) => { let s = 0; const n = flat.length / 2;
 const closeLine = (r: number[]) => [...r, r[0], r[1]];
 
 const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; key: string; result: PanelDesign }>();
-const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}|${JSON.stringify(m.tools)}`;
+const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}|${JSON.stringify(m.tools)}|${JSON.stringify(m.passes)}`;
 
 /** Everything that gets milled into one panel. */
 export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): PanelDesign {
@@ -81,7 +82,7 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   const holes = (panel.cutouts ?? []).map((c) => cutoutOutline(c).flat);
   /** the EVA of this panel: inside the cut line, outside the openings */
   const body = holes.length ? subtract([cut.flat], holes) : [cut.flat];
-  const width = grooveWidth(tool, design.depth);
+  const width = grooveFootprint(machining, tool, design.depth).width;
 
   let border = design.border.on && design.border.inset > 0 ? insetCut(panel, design.border.inset) : null;
   if (border?.warnings.some((w) => /too large|disappears/.test(w))) warnings.push('The border does not fit inside this panel at this distance from the edge.');
@@ -169,7 +170,7 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   const byTool = [...extra.values()].sort((a, b) => a.tool.number - b.tool.number);
   const result: PanelDesign = {
     cut, border: shownBorder, borderLines, pattern, graphicLines, pockets, byTool,
-    millLength: (shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines) + byTool.reduce((s, b) => s + linesLength(b.lines), 0),
+    millLength: (machining.passes.on ? 2 : 1) * ((shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines) + byTool.reduce((s, b) => s + linesLength(b.lines), 0)),
     pocketArea: regionArea(pockets) + byTool.reduce((s, b) => s + regionArea(b.pockets), 0),
     warnings,
   };
@@ -218,11 +219,31 @@ export function panelOperations(panel: Panel, design: Design | undefined, librar
   const depth = design?.depth ?? 3;
   const groove = LAYER.groove(machining.groove, depth), pocket = LAYER.pocket(machining.pocket, depth);
   const out: DxfPolyline[] = [];
-  if (d?.border) out.push({ layer: groove, points: d.border.points, bulges: d.border.bulges });
-  for (const l of [...(d?.borderLines ?? []), ...(d?.pattern ?? []), ...(d?.graphicLines ?? [])]) out.push({ layer: groove, points: l, closed: false });
+  // grooves: each line as it is, or as two passes (each line's points are in the direction to cut)
+  const passes = machining.passes;
+  const lines = (layer: string, ls: number[][]) => {
+    for (const l of ls) {
+      if (!passes.on) { out.push({ layer, points: l, closed: false }); continue; }
+      // a line that ends where it starts (a logo outline) goes round as a closed loop
+      const n = l.length, loop = n >= 8 && Math.hypot(l[0] - l[n - 2], l[1] - l[n - 1]) < 1e-6;
+      for (const pass of twoWay(l, loop, passes)) out.push({ layer, points: pass, closed: loop });
+    }
+  };
+  if (d?.border && design) {
+    if (!passes.on) out.push({ layer: groove, points: d.border.points, bulges: d.border.bulges });
+    else {
+      // the border keeps its true arcs: the first pass moved inwards (to the left, counter-clockwise), the second outwards and run clockwise
+      const shift = firstPassShift(passes);
+      const first = insetCut(panel, design.border.inset + shift), second = insetCut(panel, design.border.inset - shift);
+      out.push({ layer: groove, points: first.points, bulges: first.bulges });
+      const back = reverseBulged(second.points, second.bulges);
+      out.push({ layer: groove, points: back.points, bulges: back.bulges });
+    }
+  }
+  lines(groove, [...(d?.borderLines ?? []), ...(d?.pattern ?? []), ...(d?.graphicLines ?? [])]);
   for (const r of d?.pockets ?? []) out.push({ layer: pocket, points: r });
   for (const b of d?.byTool ?? []) {
-    for (const l of b.lines) out.push({ layer: LAYER.groove(b.tool, depth), points: l, closed: false });
+    lines(LAYER.groove(b.tool, depth), b.lines);
     for (const r of b.pockets) out.push({ layer: LAYER.pocket(b.tool, depth), points: r });
   }
   if (machining.edge) {

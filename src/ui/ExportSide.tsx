@@ -4,7 +4,7 @@ import { LAYER } from '../core/operations';
 import { cutOutline } from '../core/panel';
 import type { ProjectSettings } from '../core/project';
 import { effectiveGap, nestOptionsOf, operationTotals, summarize } from '../core/sheets';
-import { colourWidth, describeTool, grooveWidth, machiningOf, minimumGap, type Tool } from '../core/tools';
+import { describeTool, grooveFootprint, machiningOf, minimumGap, type Tool } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
@@ -126,7 +126,7 @@ function MachiningSettings({ settings, depths }: { settings: ProjectSettings; de
       {tools.map((t) => <option key={t.number} value={t.number}>{describeTool(t)}</option>)}
     </select>
   );
-  const widths = (t: Tool) => depths.map((d) => `at ${d} mm deep: ${grooveWidth(t, d).toFixed(1)} mm wide, colour line ${colourWidth(t, d, settings.material.topLayer).toFixed(1)} mm`).join('; ');
+  const widths = (t: Tool) => depths.map((d) => { const f = grooveFootprint(machining, t, d); return `at ${d} mm deep: ${f.width.toFixed(1)} mm wide, colour line ${f.colour.toFixed(1)} mm`; }).join('; ');
   const e = machining.edge;
   return (
     <>
@@ -135,6 +135,19 @@ function MachiningSettings({ settings, depths }: { settings: ProjectSettings; de
         {pick(m.groove, (n) => setM({ groove: n }))}
         <small>{widths(machining.groove)}</small>
       </label>
+      <label className="check"><input type="checkbox" checked={m.passes.on} onChange={(ev) => setM({ passes: { ...m.passes, on: ev.target.checked } })} /> Grooves in two passes, one each way (cleaner walls)</label>
+      {m.passes.on && (
+        <>
+          <div className="row"><span>Offset between the passes</span><Num value={m.passes.offset} onCommit={(v) => setM({ passes: { ...m.passes, offset: v } })} /><span>mm</span></div>
+          <label className="field">Walls finished by
+            <select value={m.passes.finish} onChange={(ev) => setM({ passes: { ...m.passes, finish: ev.target.value as 'climb' | 'conventional' } })}>
+              <option value="climb">Climb milling</option>
+              <option value="conventional">Conventional milling</option>
+            </select>
+          </label>
+          <small>Each pass is moved half the offset to one side and runs the other way, so both walls are finished the same way. The groove stays centred and gets {m.passes.offset} mm wider. Which way is cleaner in EVA: try both on an offcut.</small>
+        </>
+      )}
       <label className="field">Clearing out (filled shapes)
         {pick(m.pocket, (n) => setM({ pocket: n }))}
         <small>{widths(machining.pocket)}</small>

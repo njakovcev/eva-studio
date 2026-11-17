@@ -3,7 +3,7 @@ import { graphicHeight, hasLayers, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
 import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
 import { FONTS, retiredFont } from '../io/fonts';
-import { colourWidth, describeTool, grooveWidth, machiningOf } from '../core/tools';
+import { describeTool, grooveFootprint, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
@@ -72,7 +72,7 @@ function DesignDetails({ design }: { design: Design }) {
   const library = libraryOf(project);
   const def = findPattern(design.pattern.kind, project.patterns);
   const { machining } = machiningOf(project.settings);
-  const width = grooveWidth(machining.groove, design.depth), colour = colourWidth(machining.groove, design.depth, machining.topLayer);
+  const { width, colour } = grooveFootprint(machining, machining.groove, design.depth);
   const results = panels.map((p) => ({ name: p.name, d: designPanel(p, design, library, machining) }));
   const milling = results.reduce((s, r) => s + r.d.millLength, 0);
   const pocketed = results.reduce((s, r) => s + r.d.pocketArea, 0);

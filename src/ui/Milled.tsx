@@ -1,5 +1,5 @@
 import type { PanelDesign } from '../core/design';
-import { colourWidth, grooveWidth, type Machining, type Tool } from '../core/tools';
+import { grooveFootprint, type Machining, type Tool } from '../core/tools';
 import { shade, svgPath } from './usePanZoom';
 
 const open = (l: number[]) => { let d = ''; for (let k = 0; k < l.length; k += 2) d += `${k ? 'L' : 'M'}${l[k]},${-l[k + 1]}`; return d; };
@@ -18,8 +18,8 @@ export function Milled({ d, machining, depth, topColor, bottomColor }: { d: Pane
     <>
       {pockets.length > 0 && <path fillRule="evenodd" fill={bottomColor} d={pockets.map(svgPath).join('')} />}
       {sets.filter((s) => s.paths).flatMap((s) => [
-        { key: `${s.key}-side`, w: grooveWidth(s.tool, depth), c: shade(topColor), paths: s.paths },
-        { key: `${s.key}-line`, w: colourWidth(s.tool, depth, machining.topLayer), c: bottomColor, paths: s.paths },
+        { key: `${s.key}-side`, w: grooveFootprint(machining, s.tool, depth).width, c: shade(topColor), paths: s.paths },
+        { key: `${s.key}-line`, w: grooveFootprint(machining, s.tool, depth).colour, c: bottomColor, paths: s.paths },
       ]).filter((x) => x.w > 0).map((x) => (
         <path key={x.key} d={x.paths} fill="none" stroke={x.c} strokeWidth={x.w} strokeLinecap="round" strokeLinejoin="round" />
       ))}

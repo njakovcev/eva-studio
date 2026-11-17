@@ -4,6 +4,7 @@
  * rounding rely on. (See alati/Glodala-HS1330 in the project notes.)
  */
 import type { ProjectSettings } from './project';
+import { defaultGroovePasses, NO_PASSES, type GroovePasses } from './passes';
 
 export type ToolProfile =
   /**
@@ -104,19 +105,28 @@ export interface Machining {
   topLayer: number;
   /** every tool in the project (for logos and text that have their own) */
   tools: Tool[];
+  /** grooves in two passes, one each way */
+  passes: GroovePasses;
 }
 
-export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3, tools: DEFAULT_TOOLS };
+export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3, tools: DEFAULT_TOOLS, passes: NO_PASSES };
+
+/** How wide a groove ends up (both passes together), and its line of bottom colour. */
+export function grooveFootprint(m: Machining, tool: Tool, depth: number): { width: number; colour: number } {
+  const extra = m.passes.on ? m.passes.offset : 0, colour = colourWidth(tool, depth, m.topLayer);
+  return { width: grooveWidth(tool, depth) + extra, colour: colour > 0 ? colour + extra : 0 };
+}
 
 export interface MachiningSettings {
   /** tool numbers */
   groove: number;
   pocket: number;
   edge: { on: boolean; tool: number; bottomDepth: number; leftAtEdge: number };
+  passes: GroovePasses;
 }
 
 export function defaultMachiningSettings(): MachiningSettings {
-  return { groove: 11, pocket: 11, edge: { on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 } };
+  return { groove: 11, pocket: 11, edge: { on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 }, passes: defaultGroovePasses() };
 }
 
 /**
@@ -164,7 +174,14 @@ function workOutMachining(settings: Pick<ProjectSettings, 'tools' | 'machining' 
     const e = edgeMilling(t, m.edge.bottomDepth, m.edge.leftAtEdge, settings.material.thickness, settings.material.topLayer);
     if (typeof e === 'string') problems.push(e); else edge = e;
   }
-  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer, tools }, problems };
+  const passes = m.passes ?? defaultGroovePasses();
+  let passesOk = passes.on;
+  if (passes.on) {
+    const tip = 2 * radiusAtHeight(groove, 0);
+    if (!(passes.offset > 0)) { problems.push('The offset between the two groove passes must be more than 0 mm.'); passesOk = false; }
+    else if (passes.offset >= tip) { problems.push(`The two groove passes are ${passes.offset} mm apart, as wide as the tip of T${groove.number} (${tip} mm) or wider: a ridge would stay in the middle. Use a smaller offset; until then grooves are milled in one pass.`); passesOk = false; }
+  }
+  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer, tools, passes: passesOk ? passes : { ...passes, on: false } }, problems };
 }
 
 /** Space panels need between them on a sheet so the edge tool of one does not cut into its neighbour. */
