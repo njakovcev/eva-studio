@@ -7,6 +7,7 @@
  * every side is moved inwards by its own offset, and every corner is rounded
  * with its own radius.
  */
+import { LAYER } from './operations';
 import { sidePath } from './cleanOutline';
 import { writeDxf } from './dxf';
 import { bounds, extendToMeet, polygonArea } from './poly';
@@ -604,12 +605,12 @@ export function panelToDxf(panel: Panel, surface: Surface | undefined): string {
   const b = bounds(reference.length ? reference : cut.flat);
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));
   return writeDxf(
-    [{ name: '0_REFERENCE', color: 8 }, { name: '3_KNIFE_INNER', color: 5 }, { name: '4_KNIFE_OUTER', color: 1 }],
+    [{ name: LAYER.reference, color: 8 }, { name: LAYER.innerCut, color: 5 }, { name: LAYER.outerCut, color: 1 }],
     [
-      { layer: '4_KNIFE_OUTER', points: shift(cut.points), bulges: cut.bulges },
-      ...(panel.cutouts ?? []).map((c) => { const o = cutoutOutline(c); return { layer: '3_KNIFE_INNER', points: shift(o.points), bulges: o.bulges }; }),
-      ...(reference.length ? [{ layer: '0_REFERENCE', points: shift(reference) }] : []),
-      ...(surface ? surface.raw.holes.map((h) => ({ layer: '0_REFERENCE', points: shift(h.points) })) : []),
+      { layer: LAYER.outerCut, points: shift(cut.points), bulges: cut.bulges },
+      ...(panel.cutouts ?? []).map((c) => { const o = cutoutOutline(c); return { layer: LAYER.innerCut, points: shift(o.points), bulges: o.bulges }; }),
+      ...(reference.length ? [{ layer: LAYER.reference, points: shift(reference) }] : []),
+      ...(surface ? surface.raw.holes.map((h) => ({ layer: LAYER.reference, points: shift(h.points) })) : []),
     ],
   );
 }

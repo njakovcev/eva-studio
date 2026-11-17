@@ -8,12 +8,12 @@ import { placeArtwork, type Graphic, type StoredArtwork } from './artwork';
 import { clipLines, linesLength } from './clip';
 import { writeDxf, type DxfPolyline } from './dxf';
 import { LAYER, operationLayers } from './operations';
-import { cutOutline, cutoutOutline, insetCut, type CutOutline, type Panel } from './panel';
+import { cutOutline, cutoutOutline, insetCut, pointInPolygon, type CutOutline, type Panel } from './panel';
 import { defaultParams, patternById, patternLines, type PatternPlacement, type StoredPattern } from './patterns';
 import { bounds } from './poly';
 import { grow, intersect, regionArea, subtract, thicken, union, type Region } from './region';
 import { outlinePolygonOf, type Surface } from './surface';
-import { DEFAULT_GROOVE_TOOL, grooveWidth, type GrooveTool } from './tools';
+import { DEFAULT_MACHINING, grooveWidth, type EdgeMilling, type Machining } from './tools';
 
 export interface Design {
   id: string;
@@ -64,12 +64,15 @@ export interface PanelDesign {
 const closedLength = (flat: number[]) => { let s = 0; const n = flat.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; s += Math.hypot(flat[j * 2] - flat[i * 2], flat[j * 2 + 1] - flat[i * 2 + 1]); } return s; };
 const closeLine = (r: number[]) => [...r, r[0], r[1]];
 
-const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; tool: GrooveTool; result: PanelDesign }>();
+const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; key: string; result: PanelDesign }>();
+const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}`;
 
 /** Everything that gets milled into one panel. */
-export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, tool: GrooveTool = DEFAULT_GROOVE_TOOL): PanelDesign {
+export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): PanelDesign {
+  const key = toolKey(machining);
   const hit = cache.get(panel);
-  if (hit && hit.design === design && hit.library === library && hit.tool === tool) return hit.result;
+  if (hit && hit.design === design && hit.library === library && hit.key === key) return hit.result;
+  const tool = machining.groove;
 
   const cut = cutOutline(panel);
   const warnings: string[] = [];
@@ -104,10 +107,10 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
       } else wanted = placed.rings;
       const mine = intersect(wanted, body);
       if (mine.length) {
-        // what the cutter can actually reach: anything narrower than its tip stays unmilled
-        const r = tool.profile.tipDiameter / 2;
+        // what the cutter can actually reach: anything narrower than it cuts at this depth stays unmilled
+        const cutter = grooveWidth(machining.pocket, design.depth), r = cutter / 2;
         const lost = regionArea(mine) - regionArea(grow(grow(mine, -r), r));
-        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (${tool.profile.tipDiameter} mm) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
+        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (T${machining.pocket.number}, ${cutter.toFixed(1)} mm at this depth) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
         pockets = union(pockets, mine);
       }
       keepOut = union(keepOut, union(grow(placed.rings, Math.max(0, g.clearance)), thicken(placed.lines, g.clearance)));
@@ -159,33 +162,70 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
     warnings,
   };
   border = shownBorder;
-  cache.set(panel, { design, library, tool, result });
+  cache.set(panel, { design, library, key, result });
+  return result;
+}
+
+export interface EdgePaths {
+  /** closed lines the edge tool's centre follows: around the panel, and inside each opening big enough */
+  paths: number[][];
+  /** the strip along every knife cut where the bottom colour shows after rounding */
+  band: Region;
+  warnings: string[];
+}
+
+const edgeCache = new WeakMap<Panel, { key: string; result: EdgePaths }>();
+
+/**
+ * The rounded edge: the tool runs `offset` mm outside the knife line (into the waste,
+ * or into the opening), so after the knife cut the panel edge is rounded.
+ */
+export function edgePaths(panel: Panel, edge: EdgeMilling): EdgePaths {
+  const key = JSON.stringify(edge);
+  const hit = edgeCache.get(panel);
+  if (hit && hit.key === key) return hit.result;
+  const cut = cutOutline(panel);
+  const holes = (panel.cutouts ?? []).map((c) => cutoutOutline(c).flat);
+  const body = holes.length ? subtract([cut.flat], holes) : [cut.flat];
+  const paths = grow(body, edge.offset);
+  const warnings: string[] = [];
+  holes.forEach((h, i) => {
+    const inside = paths.some((r) => pointInPolygon(r[0], r[1], h));
+    if (!inside) warnings.push(`Opening O${i + 1} is too small for the rounded edge with T${edge.tool.number} (it needs to be wider than ${Math.ceil(2 * edge.offset)} mm). It is only cut with the knife.`);
+  });
+  const band = edge.band > 0 ? subtract(body, grow(body, -edge.band)) : [];
+  const result = { paths, band, warnings };
+  edgeCache.set(panel, { key, result });
   return result;
 }
 
 /** One panel as DXF polylines on operation layers, in surface coordinates (not yet moved anywhere). */
-export function panelOperations(panel: Panel, design: Design | undefined, library: DesignLibrary = EMPTY_LIBRARY, tool: GrooveTool = DEFAULT_GROOVE_TOOL): DxfPolyline[] {
-  const d = design ? designPanel(panel, design, library, tool) : null;
+export function panelOperations(panel: Panel, design: Design | undefined, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): DxfPolyline[] {
+  const d = design ? designPanel(panel, design, library, machining) : null;
   const cut = d?.cut ?? cutOutline(panel);
   const depth = design?.depth ?? 3;
-  const groove = LAYER.groove(tool, depth), pocket = LAYER.pocket(tool, depth);
+  const groove = LAYER.groove(machining.groove, depth), pocket = LAYER.pocket(machining.pocket, depth);
   const out: DxfPolyline[] = [];
   if (d?.border) out.push({ layer: groove, points: d.border.points, bulges: d.border.bulges });
   for (const l of [...(d?.borderLines ?? []), ...(d?.pattern ?? []), ...(d?.graphicLines ?? [])]) out.push({ layer: groove, points: l, closed: false });
   for (const r of d?.pockets ?? []) out.push({ layer: pocket, points: r });
+  if (machining.edge) {
+    const layer = LAYER.edge(machining.edge.tool, machining.edge.bottomDepth);
+    for (const r of edgePaths(panel, machining.edge).paths) out.push({ layer, points: r });
+  }
   for (const c of panel.cutouts ?? []) { const o = cutoutOutline(c); out.push({ layer: LAYER.innerCut, points: o.points, bulges: o.bulges }); }
   out.push({ layer: LAYER.outerCut, points: cut.points, bulges: cut.bulges });
   return out;
 }
 
 /** DXF of one panel with its design, one layer per CNC operation (see operations.ts). */
-export function designedPanelToDxf(panel: Panel, surface: Surface | undefined, design: Design | undefined, library: DesignLibrary = EMPTY_LIBRARY, tool: GrooveTool = DEFAULT_GROOVE_TOOL): string {
-  const ops = panelOperations(panel, design, library, tool);
+export function designedPanelToDxf(panel: Panel, surface: Surface | undefined, design: Design | undefined, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): string {
+  const ops = panelOperations(panel, design, library, machining);
   const reference = surface ? outlinePolygonOf(surface) : [];
   // origin from the surface, so all panels of one surface share it and patterns line up
   const b = bounds(reference.length ? reference : cutOutline(panel).flat);
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));
   const polylines = ops.map((o) => ({ ...o, points: shift(o.points) }));
   if (reference.length) polylines.push({ layer: LAYER.reference, points: shift(reference) });
-  return writeDxf(operationLayers(tool, design?.depth ?? 3), polylines);
+  return writeDxf(operationLayers(machining, design?.depth ?? 3), polylines);
 }

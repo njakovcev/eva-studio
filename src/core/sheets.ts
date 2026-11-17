@@ -2,20 +2,25 @@
  * Sheets ready for the machine: every panel with its design, moved to its
  * place on a sheet, written as DXF with one layer per CNC operation.
  */
-import { designPanel, panelOperations, type DesignLibrary } from './design';
+import { designPanel, edgePaths, panelOperations, type DesignLibrary } from './design';
 import { writeDxf, type DxfPolyline, type DxfText } from './dxf';
 import { applyPlacement, type NestOptions, type NestResult, type Placement } from './nest';
 import { LAYER, operationLayers } from './operations';
 import { cutOutline, type Panel } from './panel';
 import { bounds } from './poly';
 import type { Project, ProjectSettings } from './project';
-import { DEFAULT_GROOVE_TOOL, type GrooveTool } from './tools';
+import { machiningOf, minimumGap } from './tools';
+
+/** The space between panels actually used: at least what the edge tool needs. */
+export function effectiveGap(settings: ProjectSettings): number {
+  return Math.max(settings.nestGap, minimumGap(machiningOf(settings).machining.edge));
+}
 
 export function nestOptionsOf(settings: ProjectSettings): NestOptions {
   return {
     sheetLength: Math.max(settings.sheet.width, settings.sheet.height),
     sheetWidth: Math.min(settings.sheet.width, settings.sheet.height),
-    margin: settings.sheetMargin, gap: settings.nestGap,
+    margin: settings.sheetMargin, gap: effectiveGap(settings),
     rotations: settings.turning === 'none' ? [0] : settings.turning === 'quarter' ? [0, 90, 180, 270] : [0, 180],
   };
 }
@@ -43,8 +48,9 @@ export function summarize(project: Project, result: NestResult): SheetSummary[] 
 }
 
 /** One sheet as DXF. Layers are operations in running order; labels and the sheet edge are reference only. */
-export function sheetToDxf(project: Project, library: DesignLibrary, placements: Placement[], sheet: number, tool: GrooveTool = DEFAULT_GROOVE_TOOL): string {
+export function sheetToDxf(project: Project, library: DesignLibrary, placements: Placement[], sheet: number): string {
   const o = nestOptionsOf(project.settings);
+  const { machining } = machiningOf(project.settings);
   const polylines: DxfPolyline[] = [{ layer: LAYER.reference, points: [0, 0, o.sheetLength, 0, o.sheetLength, o.sheetWidth, 0, o.sheetWidth] }];
   const texts: DxfText[] = [];
   const depths = new Set<number>();
@@ -54,25 +60,28 @@ export function sheetToDxf(project: Project, library: DesignLibrary, placements:
     if (!panel) continue;
     const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
     depths.add(design?.depth ?? 3);
-    for (const op of panelOperations(panel, design, library, tool)) polylines.push({ ...op, points: applyPlacement(pl, op.points) }); // turning keeps arcs as they are
+    for (const op of panelOperations(panel, design, library, machining)) polylines.push({ ...op, points: applyPlacement(pl, op.points) }); // turning keeps arcs as they are
     const b = bounds(applyPlacement(pl, cutOutline(panel).flat));
     texts.push({ layer: LAYER.reference, x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2, height: 20, text: panel.name });
   }
   // a layer for every depth used on this sheet
-  const layers = [...depths].flatMap((d) => operationLayers(tool, d)).filter((l, i, all) => all.findIndex((x) => x.name === l.name) === i);
-  return writeDxf(layers.length ? layers : operationLayers(tool, 3), polylines, texts);
+  const layers = [...depths].flatMap((d) => operationLayers(machining, d)).filter((l, i, all) => all.findIndex((x) => x.name === l.name) === i);
+  return writeDxf(layers.length ? layers : operationLayers(machining, 3), polylines, texts);
 }
 
 /** For each operation layer on a sheet: how much there is to do (for a quick look before cutting). */
-export function operationTotals(project: Project, library: DesignLibrary, placements: Placement[]): { grooves: number; pocketArea: number; knife: number } {
-  let grooves = 0, pocketArea = 0, knife = 0;
+export function operationTotals(project: Project, library: DesignLibrary, placements: Placement[]): { grooves: number; pocketArea: number; edge: number; knife: number } {
+  let grooves = 0, pocketArea = 0, knife = 0, edge = 0;
+  const { machining } = machiningOf(project.settings);
+  const length = (f: number[]) => { let s = 0; const n = f.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; s += Math.hypot(f[j * 2] - f[i * 2], f[j * 2 + 1] - f[i * 2 + 1]); } return s; };
   for (const pl of placements) {
     const panel = project.panels.find((p) => p.id === pl.partId);
     if (!panel) continue;
     const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
-    if (design) { const d = designPanel(panel, design, library); grooves += d.millLength; pocketArea += d.pocketArea; }
+    if (design) { const d = designPanel(panel, design, library, machining); grooves += d.millLength; pocketArea += d.pocketArea; }
+    if (machining.edge) for (const r of edgePaths(panel, machining.edge).paths) edge += length(r);
     const f = cutOutline(panel).flat, n = f.length / 2;
     for (let i = 0; i < n; i++) { const j = (i + 1) % n; knife += Math.hypot(f[j * 2] - f[i * 2], f[j * 2 + 1] - f[i * 2 + 1]); }
   }
-  return { grooves, pocketArea, knife };
+  return { grooves, pocketArea, edge, knife };
 }

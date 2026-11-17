@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { placeArtwork, type Graphic } from '../core/artwork';
-import { designPanel, type Design } from '../core/design';
+import { designPanel, edgePaths, type Design } from '../core/design';
 import { cutoutOutline, pointInPolygon, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { outlinePolygonOf, type Surface } from '../core/surface';
-import { DEFAULT_GROOVE_TOOL, grooveWidth } from '../core/tools';
+import { grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { svgPath, usePanZoom, type View } from './usePanZoom';
 
@@ -36,8 +36,9 @@ export function DesignView({ surface, panels, design }: { surface: Surface; pane
     return { x: b.minX - pad, y: -b.maxY - pad, w: b.maxX - b.minX + 2 * pad, h: b.maxY - b.minY + 2 * pad };
   }, [surfacePolygon]);
   const { view, setView, px, toPlane } = usePanZoom(svg, fit);
-  const drawn = useMemo(() => panels.map((p) => ({ panel: p, d: designPanel(p, design, library) })), [panels, design, library]);
-  const width = grooveWidth(DEFAULT_GROOVE_TOOL, design.depth);
+  const { machining } = machiningOf(project.settings);
+  const drawn = useMemo(() => panels.map((p) => ({ panel: p, d: designPanel(p, design, library, machining), band: machining.edge ? edgePaths(p, machining.edge).band : [] })), [panels, design, library, machining]);
+  const width = grooveWidth(machining.groove, design.depth);
   const latest = useRef(design); latest.current = design;
   const drag = useRef<Drag | null>(null);
 
@@ -93,9 +94,10 @@ export function DesignView({ surface, panels, design }: { surface: Surface; pane
         }}
       >
         <path className="pe-surface" d={svgPath(surfacePolygon)} strokeWidth={1 * px} />
-        {drawn.map(({ panel, d }) => (
+        {drawn.map(({ panel, d, band }) => (
           <g key={panel.id}>
             <path fillRule="evenodd" fill={material.topColor} d={svgPath(d.cut.flat) + (panel.cutouts ?? []).map((c) => svgPath(cutoutOutline(c).flat)).join('')} />
+            {band.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={band.map(svgPath).join('')} />}
             {d.pockets.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={d.pockets.map(svgPath).join('')} />}
             <g fill="none" stroke={material.bottomColor} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
               {d.border && <path d={svgPath(d.border.flat)} />}

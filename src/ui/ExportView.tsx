@@ -1,10 +1,10 @@
 import { useMemo, useRef } from 'react';
-import { designPanel } from '../core/design';
+import { designPanel, edgePaths } from '../core/design';
 import { applyPlacement } from '../core/nest';
 import { cutOutline, cutoutOutline } from '../core/panel';
 import { bounds } from '../core/poly';
 import { nestOptionsOf } from '../core/sheets';
-import { DEFAULT_GROOVE_TOOL, grooveWidth } from '../core/tools';
+import { grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { svgPath, usePanZoom, type View } from './usePanZoom';
 
@@ -53,15 +53,18 @@ export function ExportView() {
           const panel = project.panels.find((p) => p.id === pl.partId);
           if (!panel) return null;
           const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
-          const d = design ? designPanel(panel, design, library) : null;
+          const { machining } = machiningOf(project.settings);
+          const d = design ? designPanel(panel, design, library, machining) : null;
           const cut = d?.cut ?? cutOutline(panel);
-          const width = grooveWidth(DEFAULT_GROOVE_TOOL, design?.depth ?? 3);
+          const width = grooveWidth(machining.groove, design?.depth ?? 3);
+          const band = machining.edge ? edgePaths(panel, machining.edge).band : [];
           const b = bounds(applyPlacement(pl, cut.flat));
           return (
             <g key={pl.partId} transform={`translate(0 ${-lift(pl.sheet)})`}>
               {/* the drawing is y-down, so a counter-clockwise turn is written as a negative angle */}
               <g transform={`translate(${pl.tx} ${-pl.ty}) rotate(${-pl.angle})`}>
                 <path fillRule="evenodd" fill={material.topColor} d={svgPath(cut.flat) + (panel.cutouts ?? []).map((c) => svgPath(cutoutOutline(c).flat)).join('')} />
+                {band.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={band.map(svgPath).join('')} />}
                 {d && d.pockets.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={d.pockets.map(svgPath).join('')} />}
                 {d && (
                   <g fill="none" stroke={material.bottomColor} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">

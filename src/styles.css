@@ -215,3 +215,5 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .lg-free { border-top-color: #1e7be0; }
 .lg-def { border-top-color: var(--text); }
 .lg-open { width: 8px; height: 8px; border: 0; background: var(--danger); border-radius: 50%; }
+.tool-form { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+label.check { display: flex; gap: 6px; align-items: center; margin: 8px 0 4px; }

@@ -18,9 +18,12 @@ Owner is not a programmer; Claude writes and maintains all code. Favour simple, 
 - `project.json` is the contract between steps. Never remove or rename a field without bumping `FORMAT_VERSION` and adding a migration.
 
 ## DXF layers = CNC operations (see src/core/operations.ts)
-`1_T21_GROOVE_<depth>MM` groove centre lines · `2_T21_POCKET_<depth>MM` closed shapes to clear out ·
-`3_KNIFE_INNER` openings · `4_KNIFE_OUTER` panel outlines (last) · `0_REFERENCE` not machined.
-The number is the running order: mill first, cut out last.
+`1_T<n>_GROOVE_<depth>MM` groove centre lines · `2_T<n>_POCKET_<depth>MM` closed shapes to clear out ·
+`3_T<n>_EDGE_<depth>MM` rounded edge: tool centre just outside every knife cut ·
+`4_KNIFE_INNER` openings · `5_KNIFE_OUTER` panel outlines (last) · `0_REFERENCE` not machined.
+The number is the running order: mill first, cut out last. Tool numbers come from
+`settings.tools` / `settings.machining` (src/core/tools.ts); defaults: T21 grooves and pockets,
+T20 ball Ø25 edge, lowest point 5 mm, 2 mm left at the knife line.
 
 ## Conventions
 - UI language: English. All units: millimetres.

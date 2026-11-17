@@ -130,7 +130,7 @@ describe('panel facts and DXF', () => {
 
   it('writes the cut line with true arcs', () => {
     const dxf = panelToDxf(panel(rect, 15, 20), undefined);
-    expect(dxf).toContain('4_KNIFE_OUTER');
+    expect(dxf).toContain('5_KNIFE_OUTER');
     expect(dxf.split('\r\n 42\r\n').length + dxf.split('\r\n42\r\n').length - 2).toBe(4);
   });
 });
@@ -149,7 +149,7 @@ describe('openings', () => {
     const cut = cutOutline(p);
     near(panelArea(p, cut), polygonArea(cut.flat) - Math.PI * 2500 - Math.PI * 900, 25);
     expect(cutoutWarnings(p, cut)).toEqual(['Opening 2 reaches outside the panel.']);
-    expect(panelToDxf(p, undefined).split('3_KNIFE_INNER').length - 1).toBeGreaterThanOrEqual(3); // layer + two openings
+    expect(panelToDxf(p, undefined).split('4_KNIFE_INNER').length - 1).toBeGreaterThanOrEqual(3); // layer + two openings
   });
 });
 

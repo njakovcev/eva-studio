@@ -14,8 +14,9 @@ import type { Design } from './design';
 import type { StoredArtwork } from './artwork';
 import type { StoredPattern } from './patterns';
 import type { Sketch } from './sketch/model';
+import { DEFAULT_TOOLS, defaultMachiningSettings, type MachiningSettings, type Tool } from './tools';
 
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const PROJECT_FILE = 'project.json';
 export const FOLDERS = { scans: 'scans', graphics: 'graphics', photos: 'photos', export: 'export' } as const;
 
@@ -27,14 +28,6 @@ export interface ScanRef {
   units: 'mm';
   addedAt: string;
   stats: MeshStats;
-}
-
-export interface ToolDef {
-  id: string;
-  name: string;
-  /** cutting diameter, mm */
-  diameter: number;
-  shape: 'flat' | 'ball' | 'v';
 }
 
 export interface ProjectSettings {
@@ -49,7 +42,10 @@ export interface ProjectSettings {
   sheetMargin: number;
   /** 'half': only half-way round (keeps the brushing direction); 'quarter': any quarter turn; 'none': never */
   turning: 'half' | 'quarter' | 'none';
-  tools: ToolDef[];
+  /** the milling tools available (v2: was an unused list of another shape) */
+  tools: Tool[];
+  /** which tool does which job, and how the outer edge is rounded */
+  machining: MachiningSettings;
 }
 
 export interface Project {
@@ -90,7 +86,8 @@ export function defaultSettings(): ProjectSettings {
     nestGap: 8,
     sheetMargin: 10,
     turning: 'half',
-    tools: [],
+    tools: DEFAULT_TOOLS.map((t) => ({ ...t, profile: { ...t.profile } })),
+    machining: defaultMachiningSettings(),
   };
 }
 
@@ -125,7 +122,16 @@ export function createProject(info: { name: string; client?: string; boat?: stri
 
 /** Brings a project written by an older version up to the current format. */
 function migrate(raw: Record<string, unknown>): Record<string, unknown> {
-  // v1 is the first format; future versions add steps here.
+  let version = raw.formatVersion as number;
+  if (version === 1) {
+    // v2: `settings.tools` became the machine's milling tools (it was an unused, always empty list),
+    // and `settings.machining` says which tool does which job.
+    const settings = { ...((raw.settings as Record<string, unknown>) ?? {}) };
+    settings.tools = DEFAULT_TOOLS.map((t) => ({ ...t, profile: { ...t.profile } }));
+    settings.machining = defaultMachiningSettings();
+    raw = { ...raw, settings, formatVersion: 2 };
+    version = 2;
+  }
   return raw;
 }
 
@@ -149,6 +155,7 @@ export function parseProject(text: string): Project {
   if (!p.project || typeof p.project.name !== 'string') throw new Error('project.json is missing the project name.');
   // Fill anything missing with defaults, so partial files still open.
   p.settings = { ...defaultSettings(), ...(p.settings ?? {}) };
+  p.settings.machining = { ...defaultMachiningSettings(), ...p.settings.machining, edge: { ...defaultMachiningSettings().edge, ...p.settings.machining?.edge } };
   p.scans = Array.isArray(p.scans) ? p.scans : [];
   p.surfaces = Array.isArray(p.surfaces) ? p.surfaces : [];
   p.panels = Array.isArray(p.panels) ? p.panels : [];

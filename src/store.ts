@@ -4,6 +4,7 @@ import { createSurface, surfaceFromSketch, surfaceToDxf, updateFromSketch, type 
 import { emptySketch, type Sketch, type SketchPhoto } from './core/sketch/model';
 import { sketchOutline } from './core/sketch/geometry';
 import { refreshReferences } from './core/sketch/solver';
+import { machiningOf } from './core/tools';
 import { createPanel, splitPanel, type EdgePoint, type Panel } from './core/panel';
 import { createDesign, designedPanelToDxf, type Design, type DesignLibrary } from './core/design';
 import type { Graphic, StoredArtwork } from './core/artwork';
@@ -379,7 +380,7 @@ export const useApp = create<State>((set, get) => {
       const design = project.designs.find((d) => d.surfaceId === surfaceId);
       const panels = project.panels.filter((p) => p.surfaceId === surfaceId);
       try {
-        for (const panel of panels) await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project)));
+        for (const panel of panels) await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project), machiningOf(project.settings).machining));
         set({ notice: `Saved ${panels.length} DXF file${panels.length === 1 ? '' : 's'} to the export folder of the project.` });
       } catch (e) {
         set({ error: `The DXF files could not be saved: ${message(e)}` });
@@ -572,7 +573,7 @@ export const useApp = create<State>((set, get) => {
         const surface = project.surfaces.find((s) => s.id === panel.surfaceId);
         // if this surface already has a design, its milling lines are part of the file
         const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
-        const path = await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project)));
+        const path = await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project), machiningOf(project.settings).machining));
         set({ notice: `Saved to ${path} in the project folder.` });
       } catch (e) {
         set({ error: `The DXF could not be saved: ${message(e)}` });

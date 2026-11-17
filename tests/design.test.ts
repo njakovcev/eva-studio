@@ -115,7 +115,7 @@ describe('design of a panel', () => {
     expect(fine.warnings.join(' ')).toMatch(/very fine/);
     const dxf = designedPanelToDxf(p, undefined, createDesign('d', 's'));
     expect(dxf.split('1_T21_GROOVE_3MM').length - 1).toBeGreaterThan(8);
-    expect(designedPanelToDxf(p, undefined, undefined)).toContain('4_KNIFE_OUTER');
+    expect(designedPanelToDxf(p, undefined, undefined)).toContain('5_KNIFE_OUTER');
   });
 });
 
@@ -181,7 +181,7 @@ describe('artwork on a panel', () => {
 
   it('writes one DXF layer per operation', () => {
     const dxf = designedPanelToDxf({ ...p, cutouts: [{ id: 'o', kind: 'circle', center: [100, 100], diameter: 50 }] }, undefined, { ...base, graphics: [g] }, lib);
-    for (const layer of ['1_T21_GROOVE_3MM', '2_T21_POCKET_3MM', '3_KNIFE_INNER', '4_KNIFE_OUTER']) expect(dxf, layer).toContain(layer);
+    for (const layer of ['1_T21_GROOVE_3MM', '2_T21_POCKET_3MM', '4_KNIFE_INNER', '5_KNIFE_OUTER']) expect(dxf, layer).toContain(layer);
     expect(regionArea([[0, 0, 1, 0, 1, 1, 0, 1]])).toBe(1);
   });
 });

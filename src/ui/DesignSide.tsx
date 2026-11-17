@@ -3,7 +3,7 @@ import { graphicHeight, hasLayers, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
 import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
 import { FONTS } from '../io/fonts';
-import { DEFAULT_GROOVE_TOOL, grooveWidth } from '../core/tools';
+import { grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
@@ -71,8 +71,9 @@ function DesignDetails({ design }: { design: Design }) {
   const material = project.settings.material;
   const library = libraryOf(project);
   const def = findPattern(design.pattern.kind, project.patterns);
-  const width = grooveWidth(DEFAULT_GROOVE_TOOL, design.depth);
-  const results = panels.map((p) => ({ name: p.name, d: designPanel(p, design, library) }));
+  const { machining } = machiningOf(project.settings);
+  const width = grooveWidth(machining.groove, design.depth);
+  const results = panels.map((p) => ({ name: p.name, d: designPanel(p, design, library, machining) }));
   const milling = results.reduce((s, r) => s + r.d.millLength, 0);
   const pocketed = results.reduce((s, r) => s + r.d.pocketArea, 0);
   const pickSvg = (input: HTMLInputElement, then: (f: File) => void) => { const f = input.files?.[0]; input.value = ''; if (!f) return; if (!f.name.toLowerCase().endsWith('.svg')) useApp.setState({ error: `“${f.name}” is not an SVG file. Save the drawing as SVG (with text converted to outlines).` }); else then(f); };
@@ -149,7 +150,7 @@ function DesignDetails({ design }: { design: Design }) {
       <h3>Milling</h3>
       <div className="row"><span>Depth</span><Num value={design.depth} step={0.5} onCommit={(v) => v > 0 && v <= material.thickness && void updateDesign({ ...design, depth: v })} /><span>mm</span></div>
       <dl className="facts">
-        <dt>Groove width at the surface</dt><dd>{width.toFixed(1)} mm <span className="muted">(tool T{DEFAULT_GROOVE_TOOL.number})</span></dd>
+        <dt>Groove width at the surface</dt><dd>{width.toFixed(1)} mm <span className="muted">(T{machining.groove.number}; tools are chosen in step 5)</span></dd>
         <dt>Length of grooves, all panels</dt><dd>{mm(milling)}</dd>
         {pocketed > 0 && <><dt>Area milled out</dt><dd>{(pocketed / 100).toFixed(0)} cm²</dd></>}
       </dl>

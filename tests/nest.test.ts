@@ -82,7 +82,7 @@ describe('sheet files', () => {
   const result = nest(nestParts(project.panels), nestOptionsOf(project.settings));
 
   it('uses the project rules', () => {
-    expect(nestOptionsOf(project.settings)).toMatchObject({ sheetLength: 2400, sheetWidth: 1200, margin: 10, gap: 8, rotations: [0, 180] });
+    expect(nestOptionsOf(project.settings)).toMatchObject({ sheetLength: 2400, sheetWidth: 1200, margin: 10, gap: 9.8, rotations: [0, 180] }); // 8 raised for the rounded edge
     expect(result.sheets).toBe(1);
     const s = summarize(project, result)[0];
     expect(s.panels).toBe(3);
@@ -93,8 +93,8 @@ describe('sheet files', () => {
   it('writes every panel with its operations at its place on the sheet', () => {
     const dxf = sheetToDxf(project, EMPTY_LIBRARY, result.placements, 0);
     const count = (layer: string) => dxf.split(`\r\nPOLYLINE\r\n8\r\n${layer}\r\n`).length - 1;
-    expect(count('4_KNIFE_OUTER')).toBe(3);
-    expect(count('3_KNIFE_INNER')).toBe(1);
+    expect(count('5_KNIFE_OUTER')).toBe(3);
+    expect(count('4_KNIFE_INNER')).toBe(1);
     expect(count('1_T21_GROOVE_3MM')).toBeGreaterThan(10); // borders and teak lines
     expect(count('0_REFERENCE')).toBe(1); // the sheet edge
     expect(dxf.split('\r\nTEXT\r\n').length - 1).toBe(3); // a name on each panel
