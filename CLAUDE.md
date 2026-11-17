@@ -22,8 +22,8 @@ Owner is not a programmer; Claude writes and maintains all code. Favour simple, 
 `3_T<n>_EDGE_<depth>MM` rounded edge: tool centre just outside every knife cut ·
 `4_KNIFE_INNER` openings · `5_KNIFE_OUTER` panel outlines (last) · `0_REFERENCE` not machined.
 The number is the running order: mill first, cut out last. Tool numbers come from
-`settings.tools` / `settings.machining` (src/core/tools.ts); defaults: T21 grooves and pockets,
-T20 ball Ø25 edge, lowest point 5 mm, 2 mm left at the knife line.
+`settings.tools` / `settings.machining` (src/core/tools.ts); defaults: T11 grooves and pockets,
+T10 ball Ø25 edge, lowest point 5 mm, 2 mm left at the knife line.
 
 ## Conventions
 - UI language: English. All units: millimetres.

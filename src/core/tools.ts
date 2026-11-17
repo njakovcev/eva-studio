@@ -12,7 +12,7 @@ export type ToolProfile =
   | { kind: 'ball'; radius: number };
 
 export interface Tool {
-  /** number in the machine's tool list (T21 → 21) */
+  /** number in the machine's tool list (T11 → 11) */
   number: number;
   name: string;
   profile: ToolProfile;
@@ -23,20 +23,20 @@ export interface Tool {
 /** @deprecated older name */
 export type GrooveTool = Tool;
 
-/** T21: form cutter 4.6*2H*R3.05, for grooves (teak lines). */
-export const T21: Tool = {
-  number: 21, name: 'Groove form cutter 4.6',
+/** T11: form cutter 4.6*2H*R3.05, for grooves (teak lines). */
+export const T11: Tool = {
+  number: 11, name: 'Groove form cutter 4.6',
   profile: { kind: 'form', tipDiameter: 4.6, tipHeight: 2, radius: 3.05 },
   rpm: 18000, feed: 3500, plunge: 800,
 };
-/** T20: ball burr Ø25, for the rounded outer edge. */
-export const T20: Tool = {
-  number: 20, name: 'Ball burr Ø25',
+/** T10: ball burr Ø25, for the rounded outer edge. */
+export const T10: Tool = {
+  number: 10, name: 'Ball burr Ø25',
   profile: { kind: 'ball', radius: 12.5 },
   rpm: 12000, feed: 2000, plunge: 500,
 };
-export const DEFAULT_GROOVE_TOOL = T21;
-export const DEFAULT_TOOLS: Tool[] = [T20, T21];
+export const DEFAULT_GROOVE_TOOL = T11;
+export const DEFAULT_TOOLS: Tool[] = [T10, T11];
 
 /** How far from its axis the tool cuts at `height` above its lowest point, mm. */
 export function radiusAtHeight(tool: Tool, height: number): number {
@@ -85,7 +85,7 @@ export interface Machining {
   edge: EdgeMilling | null;
 }
 
-export const DEFAULT_MACHINING: Machining = { groove: T21, pocket: T21, edge: null };
+export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null };
 
 export interface MachiningSettings {
   /** tool numbers */
@@ -95,7 +95,7 @@ export interface MachiningSettings {
 }
 
 export function defaultMachiningSettings(): MachiningSettings {
-  return { groove: 21, pocket: 21, edge: { on: true, tool: 20, bottomDepth: 5, leftAtEdge: 2 } };
+  return { groove: 11, pocket: 11, edge: { on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 } };
 }
 
 /**

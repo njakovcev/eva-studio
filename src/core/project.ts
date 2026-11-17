@@ -16,7 +16,7 @@ import type { StoredPattern } from './patterns';
 import type { Sketch } from './sketch/model';
 import { DEFAULT_TOOLS, defaultMachiningSettings, type MachiningSettings, type Tool } from './tools';
 
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 export const PROJECT_FILE = 'project.json';
 export const FOLDERS = { scans: 'scans', graphics: 'graphics', photos: 'photos', export: 'export' } as const;
 
@@ -42,7 +42,7 @@ export interface ProjectSettings {
   sheetMargin: number;
   /** 'half': only half-way round (keeps the brushing direction); 'quarter': any quarter turn; 'none': never */
   turning: 'half' | 'quarter' | 'none';
-  /** the milling tools available (v2: was an unused list of another shape) */
+  /** the milling tools available (v2: was an unused list of another shape; v3: renumbered T20/21/22 → T10/11/12) */
   tools: Tool[];
   /** which tool does which job, and how the outer edge is rounded */
   machining: MachiningSettings;
@@ -131,6 +131,19 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
     settings.machining = defaultMachiningSettings();
     raw = { ...raw, settings, formatVersion: 2 };
     version = 2;
+  }
+  if (version === 2) {
+    // v3: the tools were renumbered on the machine: T20 → T10, T21 → T11, T22 → T12
+    const renumber = (n: unknown) => (n === 20 ? 10 : n === 21 ? 11 : n === 22 ? 12 : n);
+    const settings = { ...((raw.settings as Record<string, unknown>) ?? {}) };
+    if (Array.isArray(settings.tools)) settings.tools = settings.tools.map((t: Record<string, unknown>) => ({ ...t, number: renumber(t.number) }));
+    const m = settings.machining as Record<string, unknown> | undefined;
+    if (m) {
+      const edge = m.edge as Record<string, unknown> | undefined;
+      settings.machining = { ...m, groove: renumber(m.groove), pocket: renumber(m.pocket), ...(edge ? { edge: { ...edge, tool: renumber(edge.tool) } } : {}) };
+    }
+    raw = { ...raw, settings, formatVersion: 3 };
+    version = 3;
   }
   return raw;
 }

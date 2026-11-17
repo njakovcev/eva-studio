@@ -4,9 +4,9 @@
  * (or later the G-code generator) can pick them up one by one.
  *
  *   0_REFERENCE          not machined: sheet edge, surface outline, labels
- *   1_T21_GROOVE_3MM     groove cutter along these centre lines, 3 mm deep
- *   2_T21_POCKET_3MM     clear out the inside of these closed shapes, 3 mm deep
- *   3_T20_EDGE_5MM       rounded edge: tool centre along these lines (just outside every
+ *   1_T11_GROOVE_3MM     groove cutter along these centre lines, 3 mm deep
+ *   2_T11_POCKET_3MM     clear out the inside of these closed shapes, 3 mm deep
+ *   3_T10_EDGE_5MM       rounded edge: tool centre along these lines (just outside every
  *                        knife cut), lowest point 5 mm deep
  *   4_KNIFE_INNER        knife: openings inside panels (before the outer cut)
  *   5_KNIFE_OUTER        knife: panel outlines, last, so parts stay put while milling
