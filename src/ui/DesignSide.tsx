@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { graphicHeight, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
-import { PATTERNS, defaultParams, patternById } from '../core/patterns';
+import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
+import { FONTS } from '../io/fonts';
 import { DEFAULT_GROOVE_TOOL, grooveWidth } from '../core/tools';
-import { useApp } from '../store';
+import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
 /** Colour pairs to start from: [name, top, bottom]. */
@@ -61,15 +63,19 @@ function SurfacePicker({ surfaces: withPanels }: { surfaces: { id: string; name:
 }
 
 function DesignDetails({ design }: { design: Design }) {
-  const { project, updateDesign, updateSettings, openDesign, exportDesignDxfs } = useApp();
+  const { project, updateDesign, updateSettings, openDesign, exportDesignDxfs, addLogo, addText, addPatternFromSvg, busy } = useApp();
+  const logoInput = useRef<HTMLInputElement>(null), tileInput = useRef<HTMLInputElement>(null);
   if (!project) return null;
   const surface = project.surfaces.find((s) => s.id === design.surfaceId);
   const panels = project.panels.filter((p) => p.surfaceId === design.surfaceId);
   const material = project.settings.material;
-  const def = patternById(design.pattern.kind);
+  const library = libraryOf(project);
+  const def = findPattern(design.pattern.kind, project.patterns);
   const width = grooveWidth(DEFAULT_GROOVE_TOOL, design.depth);
-  const results = panels.map((p) => ({ name: p.name, d: designPanel(p, design) }));
+  const results = panels.map((p) => ({ name: p.name, d: designPanel(p, design, library) }));
   const milling = results.reduce((s, r) => s + r.d.millLength, 0);
+  const pocketed = results.reduce((s, r) => s + r.d.pocketArea, 0);
+  const pickSvg = (input: HTMLInputElement, then: (f: File) => void) => { const f = input.files?.[0]; input.value = ''; if (!f) return; if (!f.name.toLowerCase().endsWith('.svg')) useApp.setState({ error: `“${f.name}” is not an SVG file. Save the drawing as SVG (with text converted to outlines).` }); else then(f); };
   const setPattern = (change: Partial<Design['pattern']>, save = true) => void updateDesign({ ...design, pattern: { ...design.pattern, ...change } }, save);
 
   return (
@@ -98,10 +104,14 @@ function DesignDetails({ design }: { design: Design }) {
       )}
 
       <h3>Pattern</h3>
-      <select value={design.pattern.kind} onChange={(e) => { const d = patternById(e.target.value); setPattern({ kind: e.target.value, params: d ? defaultParams(d) : {} }); }}>
+      <select value={design.pattern.kind} onChange={(e) => { const d = findPattern(e.target.value, project.patterns); setPattern({ kind: e.target.value, params: d ? defaultParams(d) : {} }); }}>
         <option value="none">None (plain)</option>
         {PATTERNS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        {project.patterns.length > 0 && <optgroup label="Your own">{project.patterns.map((p) => <option key={p.id} value={CUSTOM_PREFIX + p.id}>{p.name}</option>)}</optgroup>}
       </select>
+      <button className="small" disabled={!!busy} onClick={() => tileInput.current?.click()}>+ Your own pattern (SVG tile)…</button>
+      <input ref={tileInput} type="file" accept=".svg" hidden onChange={(e) => pickSvg(e.target, (f) => void addPatternFromSvg(f))} />
+      <small>Draw one tile; it is repeated side by side. The whole drawing is the tile.</small>
       {def && (
         <>
           {def.params.map((prm) => {
@@ -127,11 +137,21 @@ function DesignDetails({ design }: { design: Design }) {
         </>
       )}
 
+      <h3>Logos and text</h3>
+      {(design.graphics ?? []).map((g) => <GraphicCard key={g.id} graphic={g} />)}
+      <div className="row">
+        <button className="small" disabled={!!busy} onClick={() => logoInput.current?.click()}>+ Logo or drawing (SVG)…</button>
+        <button className="small" disabled={!!busy} onClick={() => void addText()}>+ Text</button>
+      </div>
+      <input ref={logoInput} type="file" accept=".svg" hidden onChange={(e) => pickSvg(e.target, (f) => void addLogo(f))} />
+      <small>They lie over all panels of this surface and are cut at each panel edge. Drag them in the picture.</small>
+
       <h3>Milling</h3>
       <div className="row"><span>Depth</span><Num value={design.depth} step={0.5} onCommit={(v) => v > 0 && v <= material.thickness && void updateDesign({ ...design, depth: v })} /><span>mm</span></div>
       <dl className="facts">
         <dt>Groove width at the surface</dt><dd>{width.toFixed(1)} mm <span className="muted">(tool T{DEFAULT_GROOVE_TOOL.number})</span></dd>
-        <dt>Length of milling, all panels</dt><dd>{mm(milling)}</dd>
+        <dt>Length of grooves, all panels</dt><dd>{mm(milling)}</dd>
+        {pocketed > 0 && <><dt>Area milled out</dt><dd>{(pocketed / 100).toFixed(0)} cm²</dd></>}
       </dl>
       {design.depth < material.topLayer && <div className="notice notice--warn">Shallower than the top layer ({material.topLayer} mm): the bottom colour will not show in the grooves.</div>}
       {results.flatMap((r) => r.d.warnings.map((w, i) => <div key={r.name + i} className="notice notice--warn">{r.name}: {w}</div>))}
@@ -140,5 +160,47 @@ function DesignDetails({ design }: { design: Design }) {
         <button className="primary" onClick={() => void exportDesignDxfs(design.surfaceId)}>Export DXF for {panels.length === 1 ? 'the panel' : `all ${panels.length} panels`}</button>
       </div>
     </>
+  );
+}
+
+function GraphicCard({ graphic: g }: { graphic: Graphic }) {
+  const { project, updateGraphic, removeGraphic, editText, graphicFocus, setGraphicFocus } = useApp();
+  const art = project?.artworks.find((a) => a.id === g.artworkId);
+  const [content, setContent] = useState(art?.text?.content ?? '');
+  useEffect(() => { setContent(art?.text?.content ?? ''); }, [art?.text?.content]);
+  if (!art) return null;
+  const set = (change: Partial<Graphic>) => void updateGraphic({ ...g, ...change });
+  const hasAreas = art.rings.length > 0;
+  return (
+    <div className={`opening${graphicFocus === g.id ? ' on' : ''}`} onMouseDown={() => setGraphicFocus(g.id)}>
+      <strong className="opening__name">{art.text ? 'Text' : art.name}</strong>
+      <button className="ghost" title="Remove" onClick={() => void removeGraphic(g.id)}>×</button>
+      {art.text && (
+        <div className="opening__dist">
+          <input value={content} onChange={(e) => setContent(e.target.value)} onBlur={() => { if (content.trim() && content !== art.text!.content) void editText(art.id, content, art.text!.font); else setContent(art.text!.content); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+          <select value={art.text.font} onChange={(e) => void editText(art.id, art.text!.content, e.target.value)}>
+            {FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="opening__dist">
+        <label>Width <Num value={g.width} onCommit={(v) => v > 0 && set({ width: v })} /></label>
+        <span>× {Math.round(graphicHeight(art, g))} mm</span>
+        <label>Turn ° <Num value={g.angle} onCommit={(v) => set({ angle: v })} /></label>
+      </div>
+      <div className="opening__dist">
+        <label>X <Num value={g.x} onCommit={(v) => set({ x: v })} /></label>
+        <label>Y <Num value={g.y} onCommit={(v) => set({ y: v })} /></label>
+      </div>
+      <div className="opening__dist">
+        <label>Milled as
+          <select value={g.mode} onChange={(e) => set({ mode: e.target.value as Graphic['mode'] })}>
+            <option value="line">Lines (grooves along the outlines)</option>
+            {hasAreas && <option value="area">Filled (shapes milled out)</option>}
+          </select>
+        </label>
+        <label>Pattern stays <Num value={g.clearance} onCommit={(v) => v >= 0 && set({ clearance: v })} /> mm away</label>
+      </div>
+    </div>
   );
 }

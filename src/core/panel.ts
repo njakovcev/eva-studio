@@ -598,12 +598,12 @@ export function panelToDxf(panel: Panel, surface: Surface | undefined): string {
   const b = bounds(reference.length ? reference : cut.flat);
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));
   return writeDxf(
-    [{ name: 'OUTER_CUT', color: 1 }, { name: 'INNER_CUT', color: 5 }, { name: 'REFERENCE', color: 8 }],
+    [{ name: '0_REFERENCE', color: 8 }, { name: '3_KNIFE_INNER', color: 5 }, { name: '4_KNIFE_OUTER', color: 1 }],
     [
-      { layer: 'OUTER_CUT', points: shift(cut.points), bulges: cut.bulges },
-      ...(panel.cutouts ?? []).map((c) => { const o = cutoutOutline(c); return { layer: 'INNER_CUT', points: shift(o.points), bulges: o.bulges }; }),
-      ...(reference.length ? [{ layer: 'REFERENCE', points: shift(reference) }] : []),
-      ...(surface ? surface.raw.holes.map((h) => ({ layer: 'REFERENCE', points: shift(h.points) })) : []),
+      { layer: '4_KNIFE_OUTER', points: shift(cut.points), bulges: cut.bulges },
+      ...(panel.cutouts ?? []).map((c) => { const o = cutoutOutline(c); return { layer: '3_KNIFE_INNER', points: shift(o.points), bulges: o.bulges }; }),
+      ...(reference.length ? [{ layer: '0_REFERENCE', points: shift(reference) }] : []),
+      ...(surface ? surface.raw.holes.map((h) => ({ layer: '0_REFERENCE', points: shift(h.points) })) : []),
     ],
   );
 }

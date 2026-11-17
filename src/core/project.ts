@@ -11,6 +11,8 @@ import type { MeshStats } from './mesh';
 import type { Surface } from './surface';
 import type { Panel } from './panel';
 import type { Design } from './design';
+import type { StoredArtwork } from './artwork';
+import type { StoredPattern } from './patterns';
 
 export const FORMAT_VERSION = 1;
 export const PROJECT_FILE = 'project.json';
@@ -64,6 +66,10 @@ export interface Project {
   panels: Panel[];
   /** One design per surface. */
   designs: Design[];
+  /** Logos, drawings and text used in designs. */
+  artworks: StoredArtwork[];
+  /** The user's own repeating patterns. */
+  patterns: StoredPattern[];
 }
 
 export function defaultSettings(): ProjectSettings {
@@ -100,6 +106,8 @@ export function createProject(info: { name: string; client?: string; boat?: stri
     surfaces: [],
     panels: [],
     designs: [],
+    artworks: [],
+    patterns: [],
   };
 }
 
@@ -133,6 +141,8 @@ export function parseProject(text: string): Project {
   p.surfaces = Array.isArray(p.surfaces) ? p.surfaces : [];
   p.panels = Array.isArray(p.panels) ? p.panels : [];
   p.designs = Array.isArray(p.designs) ? p.designs : [];
+  p.artworks = Array.isArray(p.artworks) ? p.artworks : [];
+  p.patterns = Array.isArray(p.patterns) ? p.patterns : [];
   p.formatVersion = FORMAT_VERSION;
   return p;
 }

@@ -2,13 +2,26 @@ import { create } from 'zustand';
 import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
 import { createSurface, surfaceToDxf, type Surface } from './core/surface';
 import { createPanel, splitPanel, type EdgePoint, type Panel } from './core/panel';
-import { createDesign, designedPanelToDxf, type Design } from './core/design';
+import { createDesign, designedPanelToDxf, type Design, type DesignLibrary } from './core/design';
+import type { Graphic, StoredArtwork } from './core/artwork';
+import { CUSTOM_PREFIX, type StoredPattern } from './core/patterns';
+import { parseSvg } from './core/svg';
+import { outlinePolygonOf } from './core/surface';
+import { bounds } from './core/poly';
+import { textArtwork } from './io/fonts';
 import type { ProjectSettings } from './core/project';
 import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
   copyScanIntoProject, createProjectFolder, ensurePermission, openProjectFolder,
-  readProjectFile, rememberProject, saveProject, writeExport,
+  copyGraphicIntoProject, readProjectFile, rememberProject, saveProject, writeExport,
 } from './io/projectFolder';
+
+let lastLibrary: DesignLibrary = { artworks: [], patterns: [] };
+/** The project's artwork and patterns as one object that stays the same until one of them changes. */
+export function libraryOf(project: Project): DesignLibrary {
+  if (lastLibrary.artworks !== project.artworks || lastLibrary.patterns !== project.patterns) lastLibrary = { artworks: project.artworks, patterns: project.patterns };
+  return lastLibrary;
+}
 
 export interface OpenScan extends LoadedScan { id: string; name: string }
 export type Step = 'scans' | 'surfaces' | 'panels' | 'design';
@@ -34,6 +47,8 @@ interface State {
   splitting: boolean;
   /** surface whose design is shown in the Design step */
   designSurfaceId: string | null;
+  /** the logo or text selected in the design view */
+  graphicFocus: string | null;
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -67,6 +82,14 @@ interface State {
   openDesign(surfaceId: string | null): Promise<void>;
   updateDesign(design: Design, save?: boolean): Promise<void>;
   exportDesignDxfs(surfaceId: string): Promise<void>;
+  setGraphicFocus(id: string | null): void;
+  addLogo(file: File): Promise<void>;
+  addText(): Promise<void>;
+  /** Changes the wording or font of a text; its outlines are rebuilt. */
+  editText(artworkId: string, content: string, font: string): Promise<void>;
+  updateGraphic(graphic: Graphic, save?: boolean): Promise<void>;
+  removeGraphic(id: string): Promise<void>;
+  addPatternFromSvg(file: File): Promise<void>;
   splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
   updateSettings(change: Partial<ProjectSettings>): Promise<void>;
   /** Steps back / forward through the changes made to surfaces, panels and settings since the project was opened. */
@@ -129,7 +152,7 @@ export const useApp = create<State>((set, get) => {
     set({
       openSurfaceId: fix(openSurfaceId, now.surfaces, target.surfaces, () => true),
       openPanelId: fix(openPanelId, now.panels, target.panels, (a, b) => a.surfaceId === b.surfaceId),
-      panelFocus: null, measuring: false, splitting: false,
+      panelFocus: null, measuring: false, splitting: false, graphicFocus: null,
     });
     await persist(target, false);
   };
@@ -139,7 +162,14 @@ export const useApp = create<State>((set, get) => {
     set({ scan: { id: ref.id, name: ref.name, ...(await loadScanFile(file)) }, selectedRegion: null });
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, error: null, notice: null };
+  /** A new logo or text goes to the middle of the surface, at about a third of its width. */
+  const placeNew = (art: StoredArtwork, surface: Project['surfaces'][number], mode: Graphic['mode']): Graphic => {
+    const b = bounds(outlinePolygonOf(surface));
+    const width = Math.round(Math.min((b.maxX - b.minX) / 3, ((b.maxY - b.minY) / 3) * (art.width / art.height)));
+    return { id: newId(), artworkId: art.id, x: Math.round((b.minX + b.maxX) / 2), y: Math.round((b.minY + b.maxY) / 2), width: Math.max(20, width), angle: 0, mode, clearance: 10 };
+  };
+
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
@@ -197,7 +227,7 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null, graphicFocus: null }),
     selectRegion: (id) => set({ selectedRegion: id }),
 
     addSurfaceFromRegion: async () => {
@@ -296,7 +326,7 @@ export const useApp = create<State>((set, get) => {
 
     openDesign: async (surfaceId) => {
       const { project } = get();
-      set({ designSurfaceId: surfaceId });
+      set({ designSurfaceId: surfaceId, graphicFocus: null });
       if (!project || !surfaceId || project.designs.some((d) => d.surfaceId === surfaceId)) return;
       // first visit: start this surface with the default design
       await persist({ ...project, designs: [...project.designs, createDesign(newId(), surfaceId)] });
@@ -316,12 +346,93 @@ export const useApp = create<State>((set, get) => {
       const design = project.designs.find((d) => d.surfaceId === surfaceId);
       const panels = project.panels.filter((p) => p.surfaceId === surfaceId);
       try {
-        for (const panel of panels) await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design));
+        for (const panel of panels) await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project)));
         set({ notice: `Saved ${panels.length} DXF file${panels.length === 1 ? '' : 's'} to the export folder of the project.` });
       } catch (e) {
         set({ error: `The DXF files could not be saved: ${message(e)}` });
       }
     },
+
+    setGraphicFocus: (id) => set({ graphicFocus: id }),
+
+    addLogo: (file) => run(`Reading ${file.name}…`, async () => {
+      const { project, dir, designSurfaceId } = get();
+      const design = project?.designs.find((d) => d.surfaceId === designSurfaceId);
+      const surface = project?.surfaces.find((s) => s.id === designSurfaceId);
+      if (!project || !dir || !design || !surface) return;
+      const art = parseSvg(await file.text());
+      await copyGraphicIntoProject(dir, file);
+      const stored: StoredArtwork = { id: newId(), name: file.name.replace(/\.svg$/i, ''), width: art.width, height: art.height, rings: art.rings, lines: art.lines };
+      const graphic = placeNew(stored, surface, art.rings.length ? 'area' : 'line');
+      set({ graphicFocus: graphic.id });
+      if (art.skipped.length) set({ notice: `Left out of this logo: ${art.skipped.join(', ')}.` });
+      await persist({ ...project, artworks: [...project.artworks, stored], designs: project.designs.map((d) => (d.id === design.id ? { ...d, graphics: [...(d.graphics ?? []), graphic] } : d)) });
+    }),
+
+    addText: () => run('Preparing the font…', async () => {
+      const { project, designSurfaceId } = get();
+      const design = project?.designs.find((d) => d.surfaceId === designSurfaceId);
+      const surface = project?.surfaces.find((s) => s.id === designSurfaceId);
+      if (!project || !design || !surface) return;
+      const text = { content: project.project.boat || project.project.name || 'TEXT', font: 'montserrat' };
+      const o = await textArtwork(text.content, text.font);
+      const stored: StoredArtwork = { id: newId(), name: text.content, width: o.width, height: o.height, rings: o.rings, lines: [], text };
+      const graphic = placeNew(stored, surface, 'area');
+      set({ graphicFocus: graphic.id });
+      await persist({ ...project, artworks: [...project.artworks, stored], designs: project.designs.map((d) => (d.id === design.id ? { ...d, graphics: [...(d.graphics ?? []), graphic] } : d)) });
+    }),
+
+    editText: async (artworkId, content, font) => {
+      const { project } = get();
+      const art = project?.artworks.find((a) => a.id === artworkId);
+      if (!project || !art || !content.trim()) return;
+      try {
+        const o = await textArtwork(content, font);
+        if (o.missing.length) set({ notice: `This font has no ${o.missing.map((c) => `“${c}”`).join(', ')}: left out.` });
+        // keep the letter height: the width of every placement follows the new length of the text
+        const grow = (o.width / o.height) / (art.width / art.height);
+        const uses = (g: Graphic) => (g.artworkId === artworkId ? { ...g, width: Math.round(g.width * grow) } : g);
+        await persist({
+          ...project,
+          artworks: project.artworks.map((a) => (a.id === artworkId ? { ...a, name: content, width: o.width, height: o.height, rings: o.rings, text: { content, font } } : a)),
+          designs: project.designs.map((d) => ({ ...d, graphics: (d.graphics ?? []).map(uses) })),
+        });
+      } catch (e) { set({ error: message(e) }); }
+    },
+
+    updateGraphic: async (graphic, save = true) => {
+      const { project } = get();
+      if (!project) return;
+      const next = { ...project, designs: project.designs.map((d) => ((d.graphics ?? []).some((g) => g.id === graphic.id) ? { ...d, graphics: d.graphics!.map((g) => (g.id === graphic.id ? graphic : g)) } : d)) };
+      if (save) await persist(next); else set({ project: next });
+    },
+
+    removeGraphic: async (id) => {
+      const { project } = get();
+      if (!project) return;
+      set({ graphicFocus: null });
+      const designs = project.designs.map((d) => ({ ...d, graphics: (d.graphics ?? []).filter((g) => g.id !== id) }));
+      // artwork nobody uses any more leaves the project file too
+      const used = new Set(designs.flatMap((d) => d.graphics.map((g) => g.artworkId)));
+      await persist({ ...project, designs, artworks: project.artworks.filter((a) => used.has(a.id)) });
+    },
+
+    addPatternFromSvg: (file) => run(`Reading ${file.name}…`, async () => {
+      const { project, dir, designSurfaceId } = get();
+      const design = project?.designs.find((d) => d.surfaceId === designSurfaceId);
+      if (!project || !dir || !design) return;
+      const art = parseSvg(await file.text());
+      await copyGraphicIntoProject(dir, file);
+      // a tile is used as lines: outlines of filled shapes count as lines too
+      const stored: StoredPattern = {
+        id: newId(), name: file.name.replace(/\.svg$/i, ''), tileWidth: art.width, tileHeight: art.height,
+        lines: [...art.rings.map((r) => [...r, r[0], r[1]]), ...art.lines],
+      };
+      await persist({
+        ...project, patterns: [...project.patterns, stored],
+        designs: project.designs.map((d) => (d.id === design.id ? { ...d, pattern: { ...d.pattern, kind: CUSTOM_PREFIX + stored.id, params: { size: 100, brick: 0 } } } : d)),
+      });
+    }),
 
     exportPanelDxf: async (id) => {
       const { project, dir } = get();
@@ -331,7 +442,7 @@ export const useApp = create<State>((set, get) => {
         const surface = project.surfaces.find((s) => s.id === panel.surfaceId);
         // if this surface already has a design, its milling lines are part of the file
         const design = project.designs.find((d) => d.surfaceId === panel.surfaceId);
-        const path = await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design));
+        const path = await writeExport(dir, `${panel.name}.dxf`, designedPanelToDxf(panel, surface, design, libraryOf(project)));
         set({ notice: `Saved to ${path} in the project folder.` });
       } catch (e) {
         set({ error: `The DXF could not be saved: ${message(e)}` });

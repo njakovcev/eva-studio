@@ -12,7 +12,7 @@ and saved to the user's own disk; nothing is uploaded.
 | v0.1 | Project folder, open OBJ scan, 3D view | done |
 | v0.2 | Surfaces: pick flat areas, straight-sided outline with editable corners, DXF export | done, incl. curved sides and tape-measurement checks |
 | v0.3 | Panels: per-side offset, per-corner radius, reshape, DXF with true arcs | done, incl. openings and splitting into several panels with a gap |
-| v0.4 | Design: border, pattern library (teak lines, diamond, hexagon, fish scale), realistic preview, milling lines in DXF | done; logo/text, custom pattern tiles still to come |
+| v0.4 | Design: border, pattern library (teak lines, diamond, hexagon, fish scale), realistic preview, milling lines in DXF | done, incl. logos (SVG) and text across panels, filled areas, own pattern tiles |
 | v0.5 | Client PDF | |
 | v0.6 | Nesting and G-code | |
 

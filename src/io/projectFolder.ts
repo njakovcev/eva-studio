@@ -79,6 +79,19 @@ export async function copyScanIntoProject(dir: FileSystemDirectoryHandle, file: 
   return `${FOLDERS.scans}/${name}`;
 }
 
+/** Copies a logo or pattern file into graphics/ (kept with the project for reference) and returns its path. */
+export async function copyGraphicIntoProject(dir: FileSystemDirectoryHandle, file: File): Promise<string> {
+  const folder = await dir.getDirectoryHandle(FOLDERS.graphics, { create: true });
+  const taken: string[] = [];
+  for await (const name of folder.keys()) taken.push(name);
+  const name = uniqueName(safeFileName(file.name), taken);
+  const handle = await folder.getFileHandle(name, { create: true });
+  const w = await handle.createWritable();
+  await w.write(file);
+  await w.close();
+  return `${FOLDERS.graphics}/${name}`;
+}
+
 /** Writes a text file into export/ (replacing an older export of the same name) and returns its path. */
 export async function writeExport(dir: FileSystemDirectoryHandle, fileName: string, text: string): Promise<string> {
   const folder = await dir.getDirectoryHandle(FOLDERS.export, { create: true });

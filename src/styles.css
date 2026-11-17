@@ -151,3 +151,10 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .presets button { display: flex; padding: 0; overflow: hidden; border-radius: 6px; width: 36px; height: 22px; }
 .presets i { flex: 1; } .presets i + i { flex: 0 0 9px; }
 .field .row { gap: 6px; } .field .row input[type='range'] { flex: 1; min-width: 0; width: auto; }
+
+/* logos and text */
+.dv-frame { fill: none; stroke: transparent; cursor: move; pointer-events: none; }
+.dv-frame.on { stroke: #ff8c1a; }
+.opening__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opening select { width: auto; flex: 1; min-width: 0; padding: 3px 6px; }
+.opening__dist > input { flex: 1; min-width: 0; padding: 3px 6px; }

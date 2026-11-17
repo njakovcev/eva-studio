@@ -79,6 +79,52 @@ const fishScale: PatternDef = {
 };
 
 export const PATTERNS: PatternDef[] = [lines, diamond, hexagon, fishScale];
+
+/**
+ * A pattern made from the user's own drawing: one tile that is repeated side by
+ * side. Kept in the project so it can be used on any surface.
+ */
+export interface StoredPattern {
+  id: string;
+  name: string;
+  /** size of one tile in the drawing's own units */
+  tileWidth: number;
+  tileHeight: number;
+  /** the tile's lines (open; closed shapes repeat their first point), lower-left corner at 0,0 */
+  lines: number[][];
+}
+
+export const CUSTOM_PREFIX = 'custom:';
+
+function customDef(stored: StoredPattern): PatternDef {
+  return {
+    id: CUSTOM_PREFIX + stored.id, name: stored.name,
+    params: [
+      { key: 'size', label: 'Tile width', unit: 'mm', min: 15, max: 1000, step: 1, default: 100 },
+      { key: 'brick', label: 'Shift every other row', unit: '%', min: 0, max: 50, step: 50, default: 0 },
+    ],
+    generate(b, p) {
+      const k = p.size / stored.tileWidth, w = p.size, h = stored.tileHeight * k, out: number[][] = [];
+      for (let j = Math.floor(b.y0 / h); j * h <= b.y1; j++) {
+        const shift = (((j % 2) + 2) % 2) * w * (p.brick / 100);
+        for (let i = Math.floor((b.x0 - shift) / w); i * w + shift <= b.x1; i++) {
+          for (const l of stored.lines) {
+            const moved = new Array<number>(l.length);
+            for (let q = 0; q < l.length; q += 2) { moved[q] = l[q] * k + i * w + shift; moved[q + 1] = l[q + 1] * k + j * h; }
+            out.push(moved);
+          }
+        }
+      }
+      return out;
+    },
+  };
+}
+
+/** Finds a pattern by id among the built-in ones and the project's own. */
+export function findPattern(id: string, library: StoredPattern[] = []): PatternDef | undefined {
+  if (id.startsWith(CUSTOM_PREFIX)) { const s = library.find((x) => CUSTOM_PREFIX + x.id === id); return s ? customDef(s) : undefined; }
+  return PATTERNS.find((p) => p.id === id);
+}
 export const patternById = (id: string) => PATTERNS.find((p) => p.id === id);
 
 export interface PatternPlacement {
@@ -97,8 +143,8 @@ export function defaultParams(def: PatternDef): Record<string, number> {
 }
 
 /** The pattern's lines covering a rectangle of the surface (before cutting to a panel). */
-export function patternLines(place: PatternPlacement, area: { minX: number; minY: number; maxX: number; maxY: number }): number[][] {
-  const def = patternById(place.kind);
+export function patternLines(place: PatternPlacement, area: { minX: number; minY: number; maxX: number; maxY: number }, library: StoredPattern[] = []): number[][] {
+  const def = findPattern(place.kind, library);
   if (!def) return [];
   const params = { ...defaultParams(def), ...place.params };
   const cos = Math.cos((place.angle * Math.PI) / 180), sin = Math.sin((place.angle * Math.PI) / 180);
