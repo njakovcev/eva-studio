@@ -157,7 +157,7 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .dv-frame.on { stroke: #ff8c1a; }
 .opening__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opening select { width: auto; flex: 1; min-width: 0; padding: 3px 6px; }
-.opening__dist > input { flex: 1; min-width: 0; padding: 3px 6px; }
+.opening__dist > input { flex: 1 1 100%; min-width: 0; padding: 3px 6px; }
 
 /* sheets */
 .sheet { fill: color-mix(in srgb, var(--muted) 12%, transparent); stroke: var(--muted); }
@@ -168,7 +168,9 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .sheet__label { fill: #fff; stroke: rgb(0 0 0 / .65); paint-order: stroke; font-weight: 600; pointer-events: none; }
 .ops code { font-size: 11px; white-space: nowrap; }
 .ops td { vertical-align: top; }
-.opening__dist label:has(select) { flex: 1; min-width: 0; }
+/* a choice (Milled as, Tool) gets a whole row: name on the left, the list filling the rest */
+.opening__dist label:has(select) { flex-basis: 100%; min-width: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; }
+.opening__dist label:has(select) select { width: 100%; }
 .opening__dist small { flex-basis: 100%; }
 
 /* ---- sketch editor ---- */
