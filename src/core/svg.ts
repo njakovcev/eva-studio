@@ -13,8 +13,10 @@ export interface Artwork {
   /** size of the drawing in its own units */
   width: number;
   height: number;
-  /** filled shapes, tidied; y points up, lower-left corner at 0,0 */
+  /** filled shapes, tidied and merged into one; y points up, lower-left corner at 0,0 */
   rings: Region;
+  /** the same filled shapes one by one, in drawing order (first = lowest), so overlaps can be kept apart */
+  layers: Region[];
   /** stroked lines (open; a closed stroke repeats its first point) */
   lines: number[][];
   /** things in the file that were skipped */
@@ -220,8 +222,15 @@ export function parseSvg(text: string): Artwork {
   // work in a comfortable number range for tidying, then return in the drawing's own units
   const k = 1000 / Math.max(maxX - minX, maxY - minY);
   const scale = (p: number[], f: number) => p.map((v) => v * f);
-  let rings: Region = [];
-  for (const f of filled) rings = rings.concat(cleanRegion(f.rings.map((r) => scale(place(r), k)), !f.evenOdd));
-  rings = cleanRegion(rings, true).map((r) => scale(r, 1 / k));
-  return { width: maxX - minX, height: maxY - minY, rings, lines: stroked.map(place), skipped: [...skipped] };
+  const layers: Region[] = [];
+  for (const f of filled) {
+    const layer = cleanRegion(f.rings.map((r) => scale(place(r), k)), !f.evenOdd);
+    if (layer.length) layers.push(layer);
+  }
+  const rings = cleanRegion(layers.flat(), true).map((r) => scale(r, 1 / k));
+  return {
+    width: maxX - minX, height: maxY - minY, rings,
+    layers: layers.map((l) => l.map((r) => scale(r, 1 / k))),
+    lines: stroked.map(place), skipped: [...skipped],
+  };
 }

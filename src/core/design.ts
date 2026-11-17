@@ -89,19 +89,43 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
     const art = library.artworks.find((a) => a.id === g.artworkId);
     if (!art) continue;
     const placed = placeArtwork(art, g);
-    const outlines = [...placed.rings.map(closeLine), ...placed.lines];
+    const separate = (g.separation ?? 0) > 0 && placed.layers.length > 1;
     if (g.mode === 'area' && placed.rings.length) {
-      const mine = intersect(placed.rings, body);
+      let wanted: Region;
+      if (separate) {
+        // From the top shape down: each shape keeps what is not covered by the shapes above it,
+        // and those are grown by the separation so an unmilled strip stays between them.
+        wanted = []; let above: Region = [];
+        for (let i = placed.layers.length - 1; i >= 0; i--) {
+          const own = placed.layers[i];
+          wanted = union(wanted, above.length ? subtract(own, above) : own);
+          above = union(above, grow(own, g.separation!));
+        }
+      } else wanted = placed.rings;
+      const mine = intersect(wanted, body);
       if (mine.length) {
         // what the cutter can actually reach: anything narrower than its tip stays unmilled
         const r = tool.profile.tipDiameter / 2;
         const lost = regionArea(mine) - regionArea(grow(grow(mine, -r), r));
-        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (${tool.profile.tipDiameter} mm) and cannot be milled out fully. Make it larger, or use lines instead of filled.`);
+        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (${tool.profile.tipDiameter} mm) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
         pockets = union(pockets, mine);
       }
       keepOut = union(keepOut, union(grow(placed.rings, Math.max(0, g.clearance)), thicken(placed.lines, g.clearance)));
       if (placed.lines.length) graphicLines.push(...clipLines(placed.lines, body));
     } else {
+      let outlines: number[][];
+      if (separate) {
+        // every shape drawn as its own outline, hidden where a shape above covers it
+        outlines = [];
+        let above: Region = [];
+        const b = bounds(placed.corners), far = [b.minX - 10, b.minY - 10, b.maxX + 10, b.minY - 10, b.maxX + 10, b.maxY + 10, b.minX - 10, b.maxY + 10];
+        for (let i = placed.layers.length - 1; i >= 0; i--) {
+          const own = placed.layers[i].map(closeLine);
+          outlines.push(...(above.length ? clipLines(own, [far, ...above]) : own));
+          above = union(above, placed.layers[i]);
+        }
+        outlines.push(...placed.lines);
+      } else outlines = [...placed.rings.map(closeLine), ...placed.lines];
       graphicLines.push(...clipLines(outlines, body));
       if (g.clearance > 0) keepOut = union(keepOut, union(grow(placed.rings, g.clearance), thicken(placed.lines, g.clearance)));
     }

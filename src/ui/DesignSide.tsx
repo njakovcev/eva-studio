@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { graphicHeight, type Graphic } from '../core/artwork';
+import { graphicHeight, hasLayers, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
 import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
 import { FONTS } from '../io/fonts';
@@ -202,6 +202,12 @@ function GraphicCard({ graphic: g }: { graphic: Graphic }) {
         </label>
         <label>Pattern stays <Num value={g.clearance} onCommit={(v) => v >= 0 && set({ clearance: v })} /> mm away</label>
       </div>
+      {hasLayers(art) && (
+        <div className="opening__dist">
+          <label>Gap between overlapping shapes <Num value={g.separation ?? 0} onCommit={(v) => v >= 0 && set({ separation: v })} /> mm</label>
+          <small>Keeps shapes that lie on top of each other apart, so a logo with several colours stays readable in two. 0 merges them.</small>
+        </div>
+      )}
     </div>
   );
 }

@@ -73,3 +73,13 @@ describe('SVG files', () => {
     expect(() => parseSvg('<svg><text>A</text></svg>')).toThrow(/outlines/);
   });
 });
+
+describe('SVG drawing order', () => {
+  it('keeps every filled shape as its own layer, lowest first', () => {
+    const art = parseSvg('<svg viewBox="0 0 200 200"><rect x="0" y="0" width="120" height="120" fill="blue"/><circle cx="130" cy="130" r="60" fill="red"/><path d="M10 190 H50" stroke="#000"/></svg>');
+    expect(art.layers.length).toBe(2);
+    expect(regionArea(art.layers[0])).toBeCloseTo(14400, 0);
+    expect(Math.abs(regionArea(art.layers[1]) - Math.PI * 3600)).toBeLessThan(20); // the circle is drawn with 72 straight pieces
+    expect(regionArea(art.rings)).toBeLessThan(14400 + Math.PI * 3600); // merged: overlap counted once
+  });
+});

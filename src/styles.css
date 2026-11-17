@@ -168,3 +168,5 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .sheet__label { fill: #fff; stroke: rgb(0 0 0 / .65); paint-order: stroke; font-weight: 600; pointer-events: none; }
 .ops code { font-size: 11px; white-space: nowrap; }
 .ops td { vertical-align: top; }
+.opening__dist label:has(select) { flex: 1; min-width: 0; }
+.opening__dist small { flex-basis: 100%; }

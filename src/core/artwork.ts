@@ -15,6 +15,8 @@ export interface StoredArtwork {
   rings: Region;
   /** stroked lines (open) */
   lines: number[][];
+  /** the filled shapes one by one in drawing order (first = lowest); missing for artwork stored before this existed */
+  layers?: Region[];
   /** set when the artwork was made from text, so it can be edited again */
   text?: { content: string; font: string };
 }
@@ -33,9 +35,17 @@ export interface Graphic {
   mode: 'line' | 'area';
   /** the pattern is kept this far away from the artwork, mm (0 with 'line': pattern runs straight through) */
   clearance: number;
+  /**
+   * Where filled shapes of the artwork overlap, the one on top is kept apart from the one under it by
+   * an unmilled strip this wide (mm), so a many-coloured logo stays readable in two colours. 0 = merge.
+   */
+  separation?: number;
 }
 
-export interface PlacedArtwork { rings: Region; lines: number[][]; corners: number[] }
+/** True when the artwork has more than one filled shape, so overlaps can be kept apart. */
+export const hasLayers = (art: StoredArtwork) => (art.layers?.length ?? 0) > 1;
+
+export interface PlacedArtwork { rings: Region; layers: Region[]; lines: number[][]; corners: number[] }
 
 /** The artwork in surface coordinates (mm), at its placed size, position and angle. */
 export function placeArtwork(art: StoredArtwork, g: Graphic): PlacedArtwork {
@@ -51,8 +61,10 @@ export function placeArtwork(art: StoredArtwork, g: Graphic): PlacedArtwork {
   };
   // drop points that no longer matter at this size (keeps files and previews light)
   const tidyClosed = (p: number[]) => { const s = simplifyOpen([...p, p[0], p[1]], 0.03); return s.slice(0, -2); };
+  const ringsOf = (region: Region) => region.map((r) => tidyClosed(move(r))).filter((r) => r.length >= 6);
   return {
-    rings: art.rings.map((r) => tidyClosed(move(r))).filter((r) => r.length >= 6),
+    rings: ringsOf(art.rings),
+    layers: (art.layers ?? []).map(ringsOf).filter((l) => l.length),
     lines: art.lines.map((l) => simplifyOpen(move(l), 0.03)),
     corners: move([0, 0, art.width, 0, art.width, art.height, 0, art.height]),
   };

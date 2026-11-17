@@ -195,3 +195,34 @@ describe('own repeating pattern', () => {
     expect(patternLines({ kind: 'custom:gone', params: {}, angle: 0, originX: 0, originY: 0 }, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, [cross])).toEqual([]);
   });
 });
+
+describe('logos with overlapping shapes', () => {
+  // a big square with a smaller square drawn on top of it, overlapping its corner
+  const lower = [0, 0, 100, 0, 100, 100, 0, 100], upper = [60, 60, 160, 60, 160, 160, 60, 160];
+  const art: StoredArtwork = { id: 'o', name: 'Overlap', width: 160, height: 160, rings: [[0, 0, 100, 0, 100, 60, 160, 60, 160, 160, 60, 160, 60, 100, 0, 100]], lines: [], layers: [[lower], [upper]] };
+  const lib = { artworks: [art], patterns: [] };
+  const p = panel(rect, 0, 0);
+  const base = { ...createDesign('d', 's'), border: { on: false, inset: 15 }, pattern: { kind: 'none', params: {}, angle: 0, originX: 0, originY: 0 } };
+  const g = { id: 'g', artworkId: 'o', x: 500, y: 300, width: 160, angle: 0, mode: 'area' as const, clearance: 0 };
+
+  it('merged (gap 0): one silhouette', () => {
+    const d = designPanel(p, { ...base, graphics: [g] }, lib);
+    expect(d.pocketArea).toBeCloseTo(10000 + 10000 - 1600, 0);
+  });
+
+  it('with a gap: the shape on top stays whole, the one below gives way by the gap', () => {
+    const d = designPanel(p, { ...base, graphics: [{ ...g, separation: 5 }] }, lib);
+    // lower square loses the 45 × 45 corner under the grown upper square (rounded corner adds back a little)
+    const expected = 10000 + (10000 - 45 * 45 + (1 - Math.PI / 4) * 25);
+    expect(Math.abs(d.pocketArea - expected)).toBeLessThan(3);
+    expect(d.pockets.length).toBe(2); // two separate shapes now
+  });
+
+  it('as lines: each shape has its own outline, hidden where the shape above covers it', () => {
+    const d = designPanel(p, { ...base, graphics: [{ ...g, mode: 'line', separation: 5 }] }, lib);
+    // upper outline 400 + lower outline 400 minus the 2 × 40 hidden under the upper square
+    expect(linesLength(d.graphicLines)).toBeCloseTo(400 + 400 - 80, 0);
+    const merged = designPanel(p, { ...base, graphics: [{ ...g, mode: 'line', separation: 0 }] }, lib);
+    expect(linesLength(merged.graphicLines)).toBeCloseTo(640, 0); // outline of the silhouette only (each square loses 80 mm inside the other)
+  });
+});

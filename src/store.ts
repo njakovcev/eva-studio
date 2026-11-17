@@ -371,8 +371,9 @@ export const useApp = create<State>((set, get) => {
       if (!project || !dir || !design || !surface) return;
       const art = parseSvg(await file.text());
       await copyGraphicIntoProject(dir, file);
-      const stored: StoredArtwork = { id: newId(), name: file.name.replace(/\.svg$/i, ''), width: art.width, height: art.height, rings: art.rings, lines: art.lines };
-      const graphic = placeNew(stored, surface, art.rings.length ? 'area' : 'line');
+      const stored: StoredArtwork = { id: newId(), name: file.name.replace(/\.svg$/i, ''), width: art.width, height: art.height, rings: art.rings, lines: art.lines, layers: art.layers };
+      // shapes on top of other shapes are kept apart by default, so a many-coloured logo stays readable
+      const graphic = { ...placeNew(stored, surface, art.rings.length ? 'area' : 'line'), ...(art.layers.length > 1 ? { separation: 5 } : {}) };
       set({ graphicFocus: graphic.id });
       if (art.skipped.length) set({ notice: `Left out of this logo: ${art.skipped.join(', ')}.` });
       await persist({ ...project, artworks: [...project.artworks, stored], designs: project.designs.map((d) => (d.id === design.id ? { ...d, graphics: [...(d.graphics ?? []), graphic] } : d)) });
