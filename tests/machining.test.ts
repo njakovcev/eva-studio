@@ -3,7 +3,7 @@ import { designedPanelToDxf, edgePaths } from '../src/core/design';
 import { cutOutline, pointInPolygon, type Panel } from '../src/core/panel';
 import { createProject, parseProject, serializeProject } from '../src/core/project';
 import { effectiveGap, nestOptionsOf } from '../src/core/sheets';
-import { colourWidth, edgeMilling, grooveWidth, machiningOf, T10, T11, type EdgeMilling } from '../src/core/tools';
+import { colourWidth, edgeMilling, grooveWidth, machiningOf, T10, T11, T12, type EdgeMilling } from '../src/core/tools';
 import type { Vec2 } from '../src/core/vec';
 
 const rect: Vec2[] = [[0, 0], [1000, 0], [1000, 600], [0, 600]];
@@ -22,6 +22,10 @@ describe('tool profiles', () => {
     expect(colourWidth(T11, 4, 3)).toBeCloseTo(4.6, 6);
     expect(colourWidth(T11, 5.05, 3)).toBeCloseTo(4.6 + 2 * Math.sqrt(3.05 ** 2 - 3 ** 2), 6); // 0.05 mm into the rounded corner
     expect(colourWidth(T11, 2.5, 3)).toBe(0);
+    // T12: tip 3.15, body 6.3
+    expect(colourWidth(T12, 3, 3)).toBeCloseTo(3.15, 6);
+    expect(grooveWidth(T12, 3)).toBeCloseTo(3.15 + 2 * Math.sqrt(1.575 ** 2 - 0.575 ** 2), 6); // 6.08
+    expect(grooveWidth(T12, 9)).toBeCloseTo(6.3, 6);
   });
 });
 
@@ -92,16 +96,16 @@ describe('choosing tools', () => {
 
   it('says when a chosen tool is missing', () => {
     const settings = createProject({ name: 'x' }).settings;
-    const r = machiningOf({ ...settings, machining: { ...settings.machining, groove: 12 } });
-    expect(r.problems[0]).toMatch(/T12 for grooves is not in the tool list/);
+    const r = machiningOf({ ...settings, machining: { ...settings.machining, groove: 13 } });
+    expect(r.problems[0]).toMatch(/T13 for grooves is not in the tool list/);
   });
 
   it('opens version 1 projects with the machine tools filled in', () => {
     const old = JSON.parse(serializeProject(createProject({ name: 'old' })));
     old.formatVersion = 1; old.settings.tools = []; delete old.settings.machining;
     const p = parseProject(JSON.stringify(old));
-    expect(p.formatVersion).toBe(3);
-    expect(p.settings.tools.map((t) => t.number)).toEqual([10, 11]);
+    expect(p.formatVersion).toBe(4);
+    expect(p.settings.tools.map((t) => t.number)).toEqual([10, 11, 12]);
     expect(p.settings.machining.edge).toEqual({ on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 });
   });
 
@@ -112,6 +116,7 @@ describe('choosing tools', () => {
     old.settings.machining = { groove: 21, pocket: 22, edge: { on: true, tool: 20, bottomDepth: 5, leftAtEdge: 2 } };
     const p = parseProject(JSON.stringify(old));
     expect(p.settings.tools.map((t) => t.number)).toEqual([10, 11, 12]);
+    expect(p.settings.tools[2].name).toBe('mine'); // their own T22 stays, as T12
     expect(p.settings.machining).toMatchObject({ groove: 11, pocket: 12, edge: { tool: 10 } });
   });
 });

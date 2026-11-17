@@ -38,8 +38,14 @@ export const T10: Tool = {
   profile: { kind: 'ball', radius: 12.5 },
   rpm: 12000, feed: 2000, plunge: 500,
 };
+/** T12: the same form as T11, smaller: tip Ø3.15 × 2, body Ø6.3 (measured 17. 11.), so R ≈ 1.575. */
+export const T12: Tool = {
+  number: 12, name: 'Groove form cutter 3.15',
+  profile: { kind: 'form', tipDiameter: 3.15, tipHeight: 2, radius: 1.575 },
+  rpm: 18000, feed: 3500, plunge: 800,
+};
 export const DEFAULT_GROOVE_TOOL = T11;
-export const DEFAULT_TOOLS: Tool[] = [T10, T11];
+export const DEFAULT_TOOLS: Tool[] = [T10, T11, T12];
 
 /** How far from its axis the tool cuts at `height` above its lowest point, mm. */
 export function radiusAtHeight(tool: Tool, height: number): number {
