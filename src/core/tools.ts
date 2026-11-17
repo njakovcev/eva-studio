@@ -6,7 +6,10 @@
 import type { ProjectSettings } from './project';
 
 export type ToolProfile =
-  /** form cutter: a straight tip, then widening along a quarter circle */
+  /**
+   * form cutter: a straight tip, then a corner rounded outwards (radius `radius`) up to the
+   * body, which is tipDiameter + 2 × radius wide (T11 and T12, as seen on the photo of 17. 11.)
+   */
   | { kind: 'form'; tipDiameter: number; tipHeight: number; radius: number }
   /** ball: a sphere of this radius */
   | { kind: 'ball'; radius: number };
@@ -43,12 +46,20 @@ export function radiusAtHeight(tool: Tool, height: number): number {
   const p = tool.profile, h = Math.max(0, height);
   if (p.kind === 'ball') return h >= p.radius ? p.radius : Math.sqrt(p.radius * p.radius - (p.radius - h) ** 2);
   if (h <= p.tipHeight) return p.tipDiameter / 2;
+  // the rounded corner: flat where it leaves the tip, upright where it meets the body
   const k = Math.min(h - p.tipHeight, p.radius);
-  return p.tipDiameter / 2 + p.radius - Math.sqrt(p.radius * p.radius - k * k);
+  return p.tipDiameter / 2 + Math.sqrt(p.radius * p.radius - (p.radius - k) ** 2);
 }
 
 /** Width of the groove at the surface of the sheet when milled `depth` mm deep. */
 export const grooveWidth = (tool: Tool, depth: number) => 2 * radiusAtHeight(tool, depth);
+
+/**
+ * Width of the line of bottom colour that shows in the groove: only where the cut goes
+ * through the whole top layer. 0 when the groove is shallower than the top layer.
+ */
+export const colourWidth = (tool: Tool, depth: number, topLayer: number) =>
+  depth < topLayer - 1e-9 ? 0 : 2 * radiusAtHeight(tool, depth - topLayer);
 
 /** Largest cutting diameter. */
 export function maxDiameter(tool: Tool): number {
@@ -83,9 +94,11 @@ export interface Machining {
   groove: Tool;
   pocket: Tool;
   edge: EdgeMilling | null;
+  /** thickness of the top layer, mm (where the bottom colour starts) */
+  topLayer: number;
 }
 
-export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null };
+export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3 };
 
 export interface MachiningSettings {
   /** tool numbers */
@@ -143,7 +156,7 @@ function workOutMachining(settings: Pick<ProjectSettings, 'tools' | 'machining' 
     const e = edgeMilling(t, m.edge.bottomDepth, m.edge.leftAtEdge, settings.material.thickness, settings.material.topLayer);
     if (typeof e === 'string') problems.push(e); else edge = e;
   }
-  return { machining: { groove, pocket, edge }, problems };
+  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer }, problems };
 }
 
 /** Space panels need between them on a sheet so the edge tool of one does not cut into its neighbour. */

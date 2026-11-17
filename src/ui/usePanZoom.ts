@@ -45,6 +45,14 @@ export function usePanZoom(svg: RefObject<SVGSVGElement | null>, fit: View) {
   return { view, setView, px, toPlane };
 }
 
+/** A colour made darker (0…1 of the original brightness), for the sloped sides of a groove. */
+export function shade(hex: string, k = 0.72): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16), c = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
+  return `#${c((n >> 16) & 255)}${c((n >> 8) & 255)}${c(n & 255)}`;
+}
+
 export const svgPath = (pts: ArrayLike<number>) => {
   let d = '';
   for (let i = 0; i < pts.length; i += 2) d += `${i ? 'L' : 'M'}${pts[i]},${-pts[i + 1]}`;

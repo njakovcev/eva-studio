@@ -13,7 +13,7 @@ import { defaultParams, patternById, patternLines, type PatternPlacement, type S
 import { bounds } from './poly';
 import { grow, intersect, regionArea, subtract, thicken, union, type Region } from './region';
 import { outlinePolygonOf, type Surface } from './surface';
-import { DEFAULT_MACHINING, grooveWidth, type EdgeMilling, type Machining } from './tools';
+import { DEFAULT_MACHINING, grooveWidth, radiusAtHeight, type EdgeMilling, type Machining } from './tools';
 
 export interface Design {
   id: string;
@@ -65,7 +65,7 @@ const closedLength = (flat: number[]) => { let s = 0; const n = flat.length / 2;
 const closeLine = (r: number[]) => [...r, r[0], r[1]];
 
 const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; key: string; result: PanelDesign }>();
-const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}`;
+const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}`;
 
 /** Everything that gets milled into one panel. */
 export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): PanelDesign {
@@ -108,9 +108,10 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
       const mine = intersect(wanted, body);
       if (mine.length) {
         // what the cutter can actually reach: anything narrower than it cuts at this depth stays unmilled
-        const cutter = grooveWidth(machining.pocket, design.depth), r = cutter / 2;
+        // the cutter's narrowest part that still reaches the bottom colour (for T11: its 4.6 mm tip)
+        const r = Math.max(0.5, radiusAtHeight(machining.pocket, Math.max(0, design.depth - machining.topLayer)));
         const lost = regionArea(mine) - regionArea(grow(grow(mine, -r), r));
-        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (T${machining.pocket.number}, ${cutter.toFixed(1)} mm at this depth) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
+        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (T${machining.pocket.number}, ${(2 * r).toFixed(1)} mm) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
         pockets = union(pockets, mine);
       }
       keepOut = union(keepOut, union(grow(placed.rings, Math.max(0, g.clearance)), thicken(placed.lines, g.clearance)));

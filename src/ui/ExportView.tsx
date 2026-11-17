@@ -4,9 +4,9 @@ import { applyPlacement } from '../core/nest';
 import { cutOutline, cutoutOutline } from '../core/panel';
 import { bounds } from '../core/poly';
 import { nestOptionsOf } from '../core/sheets';
-import { grooveWidth, machiningOf } from '../core/tools';
+import { colourWidth, grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
-import { svgPath, usePanZoom, type View } from './usePanZoom';
+import { shade, svgPath, usePanZoom, type View } from './usePanZoom';
 
 const open = (l: number[]) => { let d = ''; for (let k = 0; k < l.length; k += 2) d += `${k ? 'L' : 'M'}${l[k]},${-l[k + 1]}`; return d; };
 const SPACE = 160; // between sheets in the picture, mm
@@ -56,7 +56,7 @@ export function ExportView() {
           const { machining } = machiningOf(project.settings);
           const d = design ? designPanel(panel, design, library, machining) : null;
           const cut = d?.cut ?? cutOutline(panel);
-          const width = grooveWidth(machining.groove, design?.depth ?? 3);
+          const width = grooveWidth(machining.groove, design?.depth ?? 3), colour = colourWidth(machining.groove, design?.depth ?? 3, machining.topLayer);
           const band = machining.edge ? edgePaths(panel, machining.edge).band : [];
           const b = bounds(applyPlacement(pl, cut.flat));
           return (
@@ -66,12 +66,12 @@ export function ExportView() {
                 <path fillRule="evenodd" fill={material.topColor} d={svgPath(cut.flat) + (panel.cutouts ?? []).map((c) => svgPath(cutoutOutline(c).flat)).join('')} />
                 {band.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={band.map(svgPath).join('')} />}
                 {d && d.pockets.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={d.pockets.map(svgPath).join('')} />}
-                {d && (
-                  <g fill="none" stroke={material.bottomColor} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
+                {d && [{ w: width, c: shade(material.topColor) }, { w: colour, c: material.bottomColor }].filter((s) => s.w > 0).map((s) => (
+                  <g key={s.c} fill="none" stroke={s.c} strokeWidth={s.w} strokeLinecap="round" strokeLinejoin="round">
                     {d.border && <path d={svgPath(d.border.flat)} />}
                     <path d={[...(d.borderLines ?? []), ...d.pattern, ...d.graphicLines].map(open).join('')} />
                   </g>
-                )}
+                ))}
                 <path className="sheet__cut" d={svgPath(cut.flat)} strokeWidth={1.5 * px} />
               </g>
               <text className="sheet__label" x={(b.minX + b.maxX) / 2} y={-(b.minY + b.maxY) / 2} fontSize={13 * px} textAnchor="middle" strokeWidth={3 * px}>{panel.name}</text>

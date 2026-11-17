@@ -4,9 +4,9 @@ import { designPanel, edgePaths, type Design } from '../core/design';
 import { cutoutOutline, pointInPolygon, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { outlinePolygonOf, type Surface } from '../core/surface';
-import { grooveWidth, machiningOf } from '../core/tools';
+import { colourWidth, grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
-import { svgPath, usePanZoom, type View } from './usePanZoom';
+import { shade, svgPath, usePanZoom, type View } from './usePanZoom';
 
 const open = (l: number[]) => { let d = ''; for (let k = 0; k < l.length; k += 2) d += `${k ? 'L' : 'M'}${l[k]},${-l[k + 1]}`; return d; };
 
@@ -38,7 +38,7 @@ export function DesignView({ surface, panels, design }: { surface: Surface; pane
   const { view, setView, px, toPlane } = usePanZoom(svg, fit);
   const { machining } = machiningOf(project.settings);
   const drawn = useMemo(() => panels.map((p) => ({ panel: p, d: designPanel(p, design, library, machining), band: machining.edge ? edgePaths(p, machining.edge).band : [] })), [panels, design, library, machining]);
-  const width = grooveWidth(machining.groove, design.depth);
+  const width = grooveWidth(machining.groove, design.depth), colour = colourWidth(machining.groove, design.depth, machining.topLayer);
   const latest = useRef(design); latest.current = design;
   const drag = useRef<Drag | null>(null);
 
@@ -99,10 +99,13 @@ export function DesignView({ surface, panels, design }: { surface: Surface; pane
             <path fillRule="evenodd" fill={material.topColor} d={svgPath(d.cut.flat) + (panel.cutouts ?? []).map((c) => svgPath(cutoutOutline(c).flat)).join('')} />
             {band.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={band.map(svgPath).join('')} />}
             {d.pockets.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={d.pockets.map(svgPath).join('')} />}
-            <g fill="none" stroke={material.bottomColor} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
-              {d.border && <path d={svgPath(d.border.flat)} />}
-              <path d={[...(d.borderLines ?? []), ...d.pattern, ...d.graphicLines].map(open).join('')} />
-            </g>
+            {/* the whole groove (its rounded sides in a darker top colour), then the line of bottom colour */}
+            {[{ w: width, c: shade(material.topColor) }, { w: colour, c: material.bottomColor }].filter((s) => s.w > 0).map((s) => (
+              <g key={s.c} fill="none" stroke={s.c} strokeWidth={s.w} strokeLinecap="round" strokeLinejoin="round">
+                {d.border && <path d={svgPath(d.border.flat)} />}
+                <path d={[...(d.borderLines ?? []), ...d.pattern, ...d.graphicLines].map(open).join('')} />
+              </g>
+            ))}
           </g>
         ))}
         {frames.map(({ g, corners }) => (

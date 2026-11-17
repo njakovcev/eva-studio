@@ -4,7 +4,7 @@ import { LAYER } from '../core/operations';
 import { cutOutline } from '../core/panel';
 import type { ProjectSettings } from '../core/project';
 import { effectiveGap, nestOptionsOf, operationTotals, summarize } from '../core/sheets';
-import { describeTool, grooveWidth, machiningOf, minimumGap, type Tool } from '../core/tools';
+import { colourWidth, describeTool, grooveWidth, machiningOf, minimumGap, type Tool } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
@@ -126,7 +126,7 @@ function MachiningSettings({ settings, depths }: { settings: ProjectSettings; de
       {tools.map((t) => <option key={t.number} value={t.number}>{describeTool(t)}</option>)}
     </select>
   );
-  const widths = (t: Tool) => depths.map((d) => `${grooveWidth(t, d).toFixed(1)} mm wide at ${d} mm`).join(', ');
+  const widths = (t: Tool) => depths.map((d) => `at ${d} mm deep: ${grooveWidth(t, d).toFixed(1)} mm wide, colour line ${colourWidth(t, d, settings.material.topLayer).toFixed(1)} mm`).join('; ');
   const e = machining.edge;
   return (
     <>

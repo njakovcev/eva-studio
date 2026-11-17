@@ -3,7 +3,7 @@ import { designedPanelToDxf, edgePaths } from '../src/core/design';
 import { cutOutline, pointInPolygon, type Panel } from '../src/core/panel';
 import { createProject, parseProject, serializeProject } from '../src/core/project';
 import { effectiveGap, nestOptionsOf } from '../src/core/sheets';
-import { edgeMilling, grooveWidth, machiningOf, T10, T11, type EdgeMilling } from '../src/core/tools';
+import { colourWidth, edgeMilling, grooveWidth, machiningOf, T10, T11, type EdgeMilling } from '../src/core/tools';
 import type { Vec2 } from '../src/core/vec';
 
 const rect: Vec2[] = [[0, 0], [1000, 0], [1000, 600], [0, 600]];
@@ -16,7 +16,12 @@ describe('tool profiles', () => {
   it('works out how wide a ball cuts', () => {
     expect(grooveWidth(T10, 3)).toBeCloseTo(2 * Math.sqrt(2 * 12.5 * 3 - 9), 6); // 16.2
     expect(grooveWidth(T10, 20)).toBeCloseTo(25, 6);
-    expect(grooveWidth(T11, 3)).toBeCloseTo(4.94, 2);
+    expect(grooveWidth(T11, 3)).toBeCloseTo(9.12, 2);
+    // the line of bottom colour: only where the cut goes through the 3 mm top layer
+    expect(colourWidth(T11, 3, 3)).toBeCloseTo(4.6, 6);
+    expect(colourWidth(T11, 4, 3)).toBeCloseTo(4.6, 6);
+    expect(colourWidth(T11, 5.05, 3)).toBeCloseTo(4.6 + 2 * Math.sqrt(3.05 ** 2 - 3 ** 2), 6); // 0.05 mm into the rounded corner
+    expect(colourWidth(T11, 2.5, 3)).toBe(0);
   });
 });
 

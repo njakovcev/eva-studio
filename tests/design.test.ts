@@ -19,8 +19,10 @@ describe('groove width of the form cutter', () => {
   it('follows the tool profile', () => {
     expect(grooveWidth(DEFAULT_GROOVE_TOOL, 1)).toBeCloseTo(4.6, 6);
     expect(grooveWidth(DEFAULT_GROOVE_TOOL, 2)).toBeCloseTo(4.6, 6);
-    expect(grooveWidth(DEFAULT_GROOVE_TOOL, 3)).toBeCloseTo(4.94, 2);
-    expect(grooveWidth(DEFAULT_GROOVE_TOOL, 4)).toBeCloseTo(6.09, 2);
+    // above the 2 mm tip the corner is rounded outwards (R3.05): 4.6 + 2·√(3.05² − (3.05 − k)²)
+    expect(grooveWidth(DEFAULT_GROOVE_TOOL, 2.5)).toBeCloseTo(7.95, 2);
+    expect(grooveWidth(DEFAULT_GROOVE_TOOL, 3)).toBeCloseTo(9.12, 2);
+    expect(grooveWidth(DEFAULT_GROOVE_TOOL, 4)).toBeCloseTo(10.33, 2);
     expect(grooveWidth(DEFAULT_GROOVE_TOOL, 9)).toBeCloseTo(10.7, 6); // never wider than the cutter
   });
 });
