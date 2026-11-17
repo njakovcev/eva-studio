@@ -13,9 +13,12 @@ export interface DxfPolyline {
 
 export interface DxfLayer { name: string; color: number }
 
+/** A line of text (for labels; not machined). `x, y` is the middle of the text. */
+export interface DxfText { layer: string; x: number; y: number; height: number; text: string }
+
 const num = (v: number) => (Math.round(v * 1000) / 1000).toString();
 
-export function writeDxf(layers: DxfLayer[], polylines: DxfPolyline[]): string {
+export function writeDxf(layers: DxfLayer[], polylines: DxfPolyline[], texts: DxfText[] = []): string {
   const out: string[] = [];
   const add = (code: number, value: string | number) => { out.push(String(code), String(value)); };
 
@@ -44,6 +47,12 @@ export function writeDxf(layers: DxfLayer[], polylines: DxfPolyline[]): string {
       if (b) add(42, b);
     }
     add(0, 'SEQEND'); add(8, p.layer);
+  }
+  for (const t of texts) {
+    // plain letters only: DXF R12 has no reliable way to carry accents
+    const plain = t.text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '?');
+    add(0, 'TEXT'); add(8, t.layer); add(10, num(t.x)); add(20, num(t.y)); add(30, 0); add(40, num(t.height)); add(1, plain);
+    add(72, 1); add(73, 2); add(11, num(t.x)); add(21, num(t.y)); add(31, 0); // centred on x, y
   }
   add(0, 'ENDSEC');
   add(0, 'EOF');

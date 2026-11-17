@@ -158,3 +158,13 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .opening__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opening select { width: auto; flex: 1; min-width: 0; padding: 3px 6px; }
 .opening__dist > input { flex: 1; min-width: 0; padding: 3px 6px; }
+
+/* sheets */
+.sheet { fill: color-mix(in srgb, var(--muted) 12%, transparent); stroke: var(--muted); }
+.sheet__margin { fill: none; stroke: var(--muted); opacity: .6; }
+.sheet__used { stroke: #ff8c1a; }
+.sheet__title { fill: var(--text); font-weight: 600; }
+.sheet__cut { fill: none; stroke: #d23f31; }
+.sheet__label { fill: #fff; stroke: rgb(0 0 0 / .65); paint-order: stroke; font-weight: 600; pointer-events: none; }
+.ops code { font-size: 11px; white-space: nowrap; }
+.ops td { vertical-align: top; }

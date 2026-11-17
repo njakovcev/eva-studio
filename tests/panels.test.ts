@@ -66,6 +66,13 @@ describe('cut outline', () => {
     expect(cut.warnings).toEqual([]);
   });
 
+  it('warns when the cut line would cross itself', () => {
+    // an hourglass: two wide ends joined by a 20 mm neck, with 15 mm offsets
+    const hourglass: Vec2[] = [[0, 0], [300, 0], [300, 90], [320, 90], [320, 0], [600, 0], [600, 200], [320, 200], [320, 110], [300, 110], [300, 200], [0, 200]];
+    expect(cutOutline(panel(hourglass, 15, 0)).warnings.join(' ')).toMatch(/crosses itself|too large|disappears/);
+    expect(cutOutline(panel(rect, 15, 20)).warnings).toEqual([]);
+  });
+
   it('follows a curved side', () => {
     // top side bulging 50 mm outwards
     const top: number[] = [];

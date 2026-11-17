@@ -9,6 +9,8 @@ import { parseSvg } from './core/svg';
 import { outlinePolygonOf } from './core/surface';
 import { bounds } from './core/poly';
 import { textArtwork } from './io/fonts';
+import type { NestResult } from './core/nest';
+import { nestOptionsOf, nestParts, sheetToDxf } from './core/sheets';
 import type { ProjectSettings } from './core/project';
 import { loadScanFile, type LoadedScan } from './io/loadScan';
 import {
@@ -24,7 +26,7 @@ export function libraryOf(project: Project): DesignLibrary {
 }
 
 export interface OpenScan extends LoadedScan { id: string; name: string }
-export type Step = 'scans' | 'surfaces' | 'panels' | 'design';
+export type Step = 'scans' | 'surfaces' | 'panels' | 'design' | 'export';
 /** a side or corner of the open panel that is pointed at (in the table or in the drawing) */
 export type PanelFocus = { kind: 'side' | 'corner' | 'cutout'; index: number } | null;
 
@@ -49,6 +51,9 @@ interface State {
   designSurfaceId: string | null;
   /** the logo or text selected in the design view */
   graphicFocus: string | null;
+  /** the current arrangement of panels on sheets (not saved; recomputed when panels or rules change) */
+  nest: NestResult | null;
+  arranging: boolean;
   busy: string | null;
   error: string | null;
   notice: string | null;
@@ -90,6 +95,8 @@ interface State {
   updateGraphic(graphic: Graphic, save?: boolean): Promise<void>;
   removeGraphic(id: string): Promise<void>;
   addPatternFromSvg(file: File): Promise<void>;
+  arrange(): Promise<void>;
+  exportSheets(): Promise<void>;
   splitOpenPanel(from: EdgePoint, to: EdgePoint): Promise<void>;
   updateSettings(change: Partial<ProjectSettings>): Promise<void>;
   /** Steps back / forward through the changes made to surfaces, panels and settings since the project was opened. */
@@ -110,6 +117,8 @@ export const useApp = create<State>((set, get) => {
     catch (e) { if (!isCancel(e)) set({ error: message(e) }); }
     finally { set({ busy: null }); }
   };
+
+  let arrangeTicket = 0;
 
   // ---- undo history: earlier saved states of the project (kept in memory only) ----
   const HISTORY_LIMIT = 100;
@@ -169,7 +178,7 @@ export const useApp = create<State>((set, get) => {
     return { id: newId(), artworkId: art.id, x: Math.round((b.minX + b.maxX) / 2), y: Math.round((b.minY + b.maxY) / 2), width: Math.max(20, width), angle: 0, mode, clearance: 10 };
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, nest: null, arranging: false, error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
@@ -433,6 +442,38 @@ export const useApp = create<State>((set, get) => {
         designs: project.designs.map((d) => (d.id === design.id ? { ...d, pattern: { ...d.pattern, kind: CUSTOM_PREFIX + stored.id, params: { size: 100, brick: 0 } } } : d)),
       });
     }),
+
+    arrange: async () => {
+      const { project } = get();
+      if (!project) return;
+      if (!project.panels.length) { set({ nest: null }); return; }
+      const ticket = ++arrangeTicket;
+      set({ arranging: true });
+      try {
+        const worker = new Worker(new URL('./core/nestWorker.ts', import.meta.url), { type: 'module' });
+        const result = await new Promise<NestResult>((resolve, reject) => {
+          worker.onmessage = (e: MessageEvent<{ ok: true; result: NestResult } | { ok: false; error: string }>) => (e.data.ok ? resolve(e.data.result) : reject(new Error(e.data.error)));
+          worker.onerror = (e) => reject(new Error(e.message || 'The panels could not be arranged.'));
+          worker.postMessage({ parts: nestParts(project.panels), options: nestOptionsOf(project.settings) });
+        }).finally(() => worker.terminate());
+        if (ticket === arrangeTicket) set({ nest: result }); // a newer request has taken over otherwise
+      } catch (e) {
+        if (ticket === arrangeTicket) set({ nest: null, error: message(e) });
+      } finally {
+        if (ticket === arrangeTicket) set({ arranging: false });
+      }
+    },
+
+    exportSheets: async () => {
+      const { project, dir, nest: result } = get();
+      if (!project || !dir || !result) return;
+      try {
+        for (let i = 0; i < result.sheets; i++) await writeExport(dir, `Sheet ${i + 1}.dxf`, sheetToDxf(project, libraryOf(project), result.placements, i));
+        set({ notice: `Saved ${result.sheets} sheet file${result.sheets === 1 ? '' : 's'} (Sheet 1.dxf…) to the export folder of the project.` });
+      } catch (e) {
+        set({ error: `The sheet files could not be saved: ${message(e)}` });
+      }
+    },
 
     exportPanelDxf: async (id) => {
       const { project, dir } = get();

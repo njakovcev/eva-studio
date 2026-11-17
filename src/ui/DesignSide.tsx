@@ -157,7 +157,8 @@ function DesignDetails({ design }: { design: Design }) {
       {results.flatMap((r) => r.d.warnings.map((w, i) => <div key={r.name + i} className="notice notice--warn">{r.name}: {w}</div>))}
 
       <div className="side__actions">
-        <button className="primary" onClick={() => void exportDesignDxfs(design.surfaceId)}>Export DXF for {panels.length === 1 ? 'the panel' : `all ${panels.length} panels`}</button>
+        <button className="primary" onClick={() => useApp.getState().setStep('export')}>Next: arrange on sheets →</button>
+        <button onClick={() => void exportDesignDxfs(design.surfaceId)}>Export DXF for {panels.length === 1 ? 'the panel' : `all ${panels.length} panels`} (one file each)</button>
       </div>
     </>
   );

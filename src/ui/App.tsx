@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useApp, type Step } from '../store';
 import { DesignSide } from './DesignSide';
 import { DesignView } from './DesignView';
+import { ExportSide } from './ExportSide';
+import { ExportView } from './ExportView';
 import { OutlineEditor } from './OutlineEditor';
 import { PanelEditor } from './PanelEditor';
 import { PanelsSide } from './PanelsSide';
@@ -15,7 +17,7 @@ const STEPS: { id: string; label: string; ready: boolean }[] = [
   { id: 'surfaces', label: 'Surfaces', ready: true },
   { id: 'panels', label: 'Panels', ready: true },
   { id: 'design', label: 'Design', ready: true },
-  { id: 'export', label: 'Export', ready: false },
+  { id: 'export', label: 'Sheets', ready: true },
 ];
 
 export function App() {
@@ -29,7 +31,8 @@ export function App() {
   const openPanel = project?.panels.find((p) => p.id === openPanelId);
   const designSurface = step === 'design' ? project?.surfaces.find((s) => s.id === designSurfaceId) : undefined;
   const openDesign = designSurface && project?.designs.find((d) => d.surfaceId === designSurface.id);
-  const editing = openSurface ?? openPanel ?? openDesign;
+  const showSheets = step === 'export' && project !== null;
+  const editing = openSurface ?? openPanel ?? openDesign ?? (showSheets || undefined);
 
   useEffect(() => {
     if (!notice) return;
@@ -103,7 +106,7 @@ export function App() {
 
           <main className="work">
             <aside className="side">
-              {step === 'surfaces' ? <SurfacesSide /> : step === 'panels' ? <PanelsSide /> : step === 'design' ? <DesignSide /> : (
+              {step === 'surfaces' ? <SurfacesSide /> : step === 'panels' ? <PanelsSide /> : step === 'design' ? <DesignSide /> : step === 'export' ? <ExportSide /> : (
                 <>
                   <div className="side__head">
                     <h2>Scans</h2>
@@ -144,6 +147,7 @@ export function App() {
             <div className={editing ? 'pane pane--hidden' : 'pane'}><ViewerPane onDropFile={takeFile} /></div>
             {openSurface && <div className="pane"><OutlineEditor surface={openSurface} /></div>}
             {openPanel && <div className="pane"><PanelEditor panel={openPanel} surface={project?.surfaces.find((s) => s.id === openPanel.surfaceId)} /></div>}
+            {showSheets && <div className="pane"><ExportView /></div>}
             {designSurface && openDesign && <div className="pane"><DesignView surface={designSurface} design={openDesign} panels={project!.panels.filter((p) => p.surfaceId === designSurface.id)} /></div>}
           </main>
         </>

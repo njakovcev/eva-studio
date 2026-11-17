@@ -43,6 +43,11 @@ export interface ProjectSettings {
   defaultCornerRadius: number;
   /** gap left between neighbouring panels when one is split, mm */
   panelGap: number;
+  /** arranging panels on sheets: space between parts, distance from the sheet edge (mm), and how parts may be turned */
+  nestGap: number;
+  sheetMargin: number;
+  /** 'half': only half-way round (keeps the brushing direction); 'quarter': any quarter turn; 'none': never */
+  turning: 'half' | 'quarter' | 'none';
   tools: ToolDef[];
 }
 
@@ -79,6 +84,9 @@ export function defaultSettings(): ProjectSettings {
     defaultEdgeOffset: 15,
     defaultCornerRadius: 20,
     panelGap: 4,
+    nestGap: 8,
+    sheetMargin: 10,
+    turning: 'half',
     tools: [],
   };
 }

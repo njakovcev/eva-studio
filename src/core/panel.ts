@@ -10,6 +10,7 @@
 import { sidePath } from './cleanOutline';
 import { writeDxf } from './dxf';
 import { bounds, extendToMeet, polygonArea } from './poly';
+import { cleanRegion, regionArea } from './region';
 import type { ProjectSettings } from './project';
 import { outlinePolygonOf, type Surface } from './surface';
 import type { Vec2 } from './vec';
@@ -208,6 +209,11 @@ export function cutOutline(panel: Panel): CutOutline {
 
   const flat = flattenArcs(points, bulges);
   if (polygonArea(flat) <= 0) warnings.push('The offsets are too large for this shape.');
+  else {
+    // a line that crosses itself cannot be cut: happens where the shape is narrower than the offsets and corners need
+    const tidy = cleanRegion([flat], false);
+    if (tidy.length !== 1 || Math.abs(regionArea(tidy) - polygonArea(flat)) > 1) warnings.push('The cut line crosses itself: a part of this shape is too narrow for these offsets and corner radii. Reshape the panel or make them smaller.');
+  }
   return { points, bulges, flat, usedRadii, warnings };
 }
 
