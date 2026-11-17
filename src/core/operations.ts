@@ -13,7 +13,7 @@
  *
  * The tool numbers come from the project's machining settings.
  */
-import type { DxfLayer } from './dxf';
+import type { DxfLayer, DxfPolyline } from './dxf';
 import type { Machining, Tool } from './tools';
 
 const mmText = (v: number) => String(Math.round(v * 10) / 10).replace('.', '_');
@@ -36,4 +36,15 @@ export function operationLayers(m: Machining, depth: number): DxfLayer[] {
     { name: LAYER.innerCut, color: 5 },
     { name: LAYER.outerCut, color: 1 },
   ];
+}
+
+/**
+ * The layer table for a file: the usual layers plus any extra ones the drawing uses
+ * (e.g. a second groove tool for a logo), in running order.
+ */
+export function withUsedLayers(base: DxfLayer[], polylines: DxfPolyline[]): DxfLayer[] {
+  const out = [...base];
+  const colour = (name: string) => (name.startsWith('1_') ? 3 : name.startsWith('2_') ? 6 : name.startsWith('3_') ? 2 : 7);
+  for (const p of polylines) if (!out.some((l) => l.name === p.layer)) out.push({ name: p.layer, color: colour(p.layer) });
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }

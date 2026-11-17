@@ -33,6 +33,8 @@ export interface Graphic {
   angle: number;
   /** 'line': mill along the outlines. 'area': mill the filled shapes out completely. */
   mode: 'line' | 'area';
+  /** tool number to mill it with; left out: the project's tool for grooves (lines) or for clearing out (filled) */
+  tool?: number;
   /** the pattern is kept this far away from the artwork, mm (0 with 'line': pattern runs straight through) */
   clearance: number;
   /**

@@ -102,9 +102,11 @@ export interface Machining {
   edge: EdgeMilling | null;
   /** thickness of the top layer, mm (where the bottom colour starts) */
   topLayer: number;
+  /** every tool in the project (for logos and text that have their own) */
+  tools: Tool[];
 }
 
-export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3 };
+export const DEFAULT_MACHINING: Machining = { groove: T11, pocket: T11, edge: null, topLayer: 3, tools: DEFAULT_TOOLS };
 
 export interface MachiningSettings {
   /** tool numbers */
@@ -162,7 +164,7 @@ function workOutMachining(settings: Pick<ProjectSettings, 'tools' | 'machining' 
     const e = edgeMilling(t, m.edge.bottomDepth, m.edge.leftAtEdge, settings.material.thickness, settings.material.topLayer);
     if (typeof e === 'string') problems.push(e); else edge = e;
   }
-  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer }, problems };
+  return { machining: { groove, pocket, edge, topLayer: settings.material.topLayer, tools }, problems };
 }
 
 /** Space panels need between them on a sheet so the edge tool of one does not cut into its neighbour. */

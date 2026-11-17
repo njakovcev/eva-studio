@@ -3,7 +3,7 @@ import { graphicHeight, hasLayers, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
 import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
 import { FONTS } from '../io/fonts';
-import { colourWidth, grooveWidth, machiningOf } from '../core/tools';
+import { colourWidth, describeTool, grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
 
@@ -173,6 +173,7 @@ function GraphicCard({ graphic: g }: { graphic: Graphic }) {
   useEffect(() => { setContent(art?.text?.content ?? ''); }, [art?.text?.content]);
   if (!art) return null;
   const set = (change: Partial<Graphic>) => void updateGraphic({ ...g, ...change });
+  const { machining } = machiningOf(project!.settings);
   const hasAreas = art.rings.length > 0;
   return (
     <div className={`opening${graphicFocus === g.id ? ' on' : ''}`} onMouseDown={() => setGraphicFocus(g.id)}>
@@ -200,6 +201,13 @@ function GraphicCard({ graphic: g }: { graphic: Graphic }) {
           <select value={g.mode} onChange={(e) => set({ mode: e.target.value as Graphic['mode'] })}>
             <option value="line">Lines (grooves along the outlines)</option>
             {hasAreas && <option value="area">Filled (shapes milled out)</option>}
+          </select>
+        </label>
+        <label>Tool
+          <select value={g.tool ?? ''} onChange={(e) => set({ tool: e.target.value === '' ? undefined : Number(e.target.value) })}>
+            <option value="">{`As the project (T${g.mode === 'area' ? machining.pocket.number : machining.groove.number})`}</option>
+            {g.tool !== undefined && !machining.tools.some((t) => t.number === g.tool) && <option value={g.tool}>T{g.tool} (not in the list)</option>}
+            {machining.tools.map((t) => <option key={t.number} value={t.number}>{describeTool(t)}</option>)}
           </select>
         </label>
         <label>Pattern stays <Num value={g.clearance} onCommit={(v) => v >= 0 && set({ clearance: v })} /> mm away</label>

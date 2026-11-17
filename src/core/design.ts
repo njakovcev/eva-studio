@@ -7,13 +7,13 @@
 import { placeArtwork, type Graphic, type StoredArtwork } from './artwork';
 import { clipLines, linesLength } from './clip';
 import { writeDxf, type DxfPolyline } from './dxf';
-import { LAYER, operationLayers } from './operations';
+import { LAYER, operationLayers, withUsedLayers } from './operations';
 import { cutOutline, cutoutOutline, insetCut, pointInPolygon, type CutOutline, type Panel } from './panel';
 import { defaultParams, patternById, patternLines, type PatternPlacement, type StoredPattern } from './patterns';
 import { bounds } from './poly';
 import { grow, intersect, regionArea, subtract, thicken, union, type Region } from './region';
 import { outlinePolygonOf, type Surface } from './surface';
-import { DEFAULT_MACHINING, grooveWidth, radiusAtHeight, type EdgeMilling, type Machining } from './tools';
+import { DEFAULT_MACHINING, grooveWidth, radiusAtHeight, type EdgeMilling, type Machining, type Tool } from './tools';
 
 export interface Design {
   id: string;
@@ -54,6 +54,8 @@ export interface PanelDesign {
   graphicLines: number[][];
   /** shapes to be milled out completely ('area' artwork), cut to the panel */
   pockets: Region;
+  /** logos and text that have their own tool: their lines and filled shapes, per tool */
+  byTool: { tool: Tool; lines: number[][]; pockets: Region }[];
   /** total length of groove milling, mm */
   millLength: number;
   /** total area milled out, mm² */
@@ -65,7 +67,7 @@ const closedLength = (flat: number[]) => { let s = 0; const n = flat.length / 2;
 const closeLine = (r: number[]) => [...r, r[0], r[1]];
 
 const cache = new WeakMap<Panel, { design: Design; library: DesignLibrary; key: string; result: PanelDesign }>();
-const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}`;
+const toolKey = (m: Machining) => `${JSON.stringify(m.groove)}|${JSON.stringify(m.pocket)}|${m.topLayer}|${JSON.stringify(m.tools)}`;
 
 /** Everything that gets milled into one panel. */
 export function designPanel(panel: Panel, design: Design, library: DesignLibrary = EMPTY_LIBRARY, machining: Machining = DEFAULT_MACHINING): PanelDesign {
@@ -88,9 +90,17 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   let keepOut: Region = [];        // where the pattern (and border) must not run
   const graphicLines: number[][] = [];
   let pockets: Region = [];
+  // logos and text with a tool of their own go to that tool's layers
+  const extra = new Map<number, { tool: Tool; lines: number[][]; pockets: Region }>();
+  const forTool = (t: Tool) => { let e = extra.get(t.number); if (!e) { e = { tool: t, lines: [], pockets: [] }; extra.set(t.number, e); } return e; };
   for (const g of design.graphics ?? []) {
     const art = library.artworks.find((a) => a.id === g.artworkId);
     if (!art) continue;
+    let own = g.tool === undefined ? undefined : machining.tools.find((t) => t.number === g.tool);
+    if (g.tool !== undefined && !own) warnings.push(`T${g.tool}, chosen for “${art.text ? art.text.content : art.name}”, is not in the tool list any more. The project's tool is used instead.`);
+    const areaTool = own ?? machining.pocket;
+    if (own && own.number === (g.mode === 'area' ? machining.pocket : machining.groove).number) own = undefined;
+    const addLines = (lines: number[][]) => { if (own) forTool(own).lines.push(...lines); else graphicLines.push(...lines); };
     const placed = placeArtwork(art, g);
     const separate = (g.separation ?? 0) > 0 && placed.layers.length > 1;
     if (g.mode === 'area' && placed.rings.length) {
@@ -109,13 +119,13 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
       if (mine.length) {
         // what the cutter can actually reach: anything narrower than it cuts at this depth stays unmilled
         // the cutter's narrowest part that still reaches the bottom colour (for T11: its 4.6 mm tip)
-        const r = Math.max(0.5, radiusAtHeight(machining.pocket, Math.max(0, design.depth - machining.topLayer)));
+        const r = Math.max(0.5, radiusAtHeight(areaTool, Math.max(0, design.depth - machining.topLayer)));
         const lost = regionArea(mine) - regionArea(grow(grow(mine, -r), r));
-        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.name}” are narrower than the cutter (T${machining.pocket.number}, ${(2 * r).toFixed(1)} mm) and cannot be milled out fully. Make it larger, use a smaller gap between shapes, or use lines instead of filled.`);
-        pockets = union(pockets, mine);
+        if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.text ? art.text.content : art.name}” are narrower than the cutter (T${areaTool.number}, ${(2 * r).toFixed(1)} mm) and cannot be milled out fully. Make it larger, choose a smaller tool for it, use a smaller gap between shapes, or use lines instead of filled.`);
+        if (own) { const e = forTool(own); e.pockets = union(e.pockets, mine); } else pockets = union(pockets, mine);
       }
       keepOut = union(keepOut, union(grow(placed.rings, Math.max(0, g.clearance)), thicken(placed.lines, g.clearance)));
-      if (placed.lines.length) graphicLines.push(...clipLines(placed.lines, body));
+      if (placed.lines.length) addLines(clipLines(placed.lines, body));
     } else {
       let outlines: number[][];
       if (separate) {
@@ -130,7 +140,7 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
         }
         outlines.push(...placed.lines);
       } else outlines = [...placed.rings.map(closeLine), ...placed.lines];
-      graphicLines.push(...clipLines(outlines, body));
+      addLines(clipLines(outlines, body));
       if (g.clearance > 0) keepOut = union(keepOut, union(grow(placed.rings, g.clearance), thicken(placed.lines, g.clearance)));
     }
   }
@@ -156,10 +166,11 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   }
 
   const shownBorder = borderLines ? null : border;
+  const byTool = [...extra.values()].sort((a, b) => a.tool.number - b.tool.number);
   const result: PanelDesign = {
-    cut, border: shownBorder, borderLines, pattern, graphicLines, pockets,
-    millLength: (shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines),
-    pocketArea: regionArea(pockets),
+    cut, border: shownBorder, borderLines, pattern, graphicLines, pockets, byTool,
+    millLength: (shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines) + byTool.reduce((s, b) => s + linesLength(b.lines), 0),
+    pocketArea: regionArea(pockets) + byTool.reduce((s, b) => s + regionArea(b.pockets), 0),
     warnings,
   };
   border = shownBorder;
@@ -210,6 +221,10 @@ export function panelOperations(panel: Panel, design: Design | undefined, librar
   if (d?.border) out.push({ layer: groove, points: d.border.points, bulges: d.border.bulges });
   for (const l of [...(d?.borderLines ?? []), ...(d?.pattern ?? []), ...(d?.graphicLines ?? [])]) out.push({ layer: groove, points: l, closed: false });
   for (const r of d?.pockets ?? []) out.push({ layer: pocket, points: r });
+  for (const b of d?.byTool ?? []) {
+    for (const l of b.lines) out.push({ layer: LAYER.groove(b.tool, depth), points: l, closed: false });
+    for (const r of b.pockets) out.push({ layer: LAYER.pocket(b.tool, depth), points: r });
+  }
   if (machining.edge) {
     const layer = LAYER.edge(machining.edge.tool, machining.edge.bottomDepth);
     for (const r of edgePaths(panel, machining.edge).paths) out.push({ layer, points: r });
@@ -228,5 +243,5 @@ export function designedPanelToDxf(panel: Panel, surface: Surface | undefined, d
   const shift = (pts: ArrayLike<number>) => Array.from(pts, (v, i) => v - (i % 2 === 0 ? b.minX : b.minY));
   const polylines = ops.map((o) => ({ ...o, points: shift(o.points) }));
   if (reference.length) polylines.push({ layer: LAYER.reference, points: shift(reference) });
-  return writeDxf(operationLayers(machining, design?.depth ?? 3), polylines);
+  return writeDxf(withUsedLayers(operationLayers(machining, design?.depth ?? 3), polylines), polylines);
 }

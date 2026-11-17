@@ -5,7 +5,7 @@
 import { designPanel, edgePaths, panelOperations, type DesignLibrary } from './design';
 import { writeDxf, type DxfPolyline, type DxfText } from './dxf';
 import { applyPlacement, type NestOptions, type NestResult, type Placement } from './nest';
-import { LAYER, operationLayers } from './operations';
+import { LAYER, operationLayers, withUsedLayers } from './operations';
 import { cutOutline, type Panel } from './panel';
 import { bounds } from './poly';
 import type { Project, ProjectSettings } from './project';
@@ -66,7 +66,7 @@ export function sheetToDxf(project: Project, library: DesignLibrary, placements:
   }
   // a layer for every depth used on this sheet
   const layers = [...depths].flatMap((d) => operationLayers(machining, d)).filter((l, i, all) => all.findIndex((x) => x.name === l.name) === i);
-  return writeDxf(layers.length ? layers : operationLayers(machining, 3), polylines, texts);
+  return writeDxf(withUsedLayers(layers.length ? layers : operationLayers(machining, 3), polylines), polylines, texts);
 }
 
 /** For each operation layer on a sheet: how much there is to do (for a quick look before cutting). */
