@@ -12,7 +12,7 @@ import { CUSTOM_PREFIX, type StoredPattern } from './core/patterns';
 import { parseSvg } from './core/svg';
 import { outlinePolygonOf } from './core/surface';
 import { bounds } from './core/poly';
-import { textArtwork } from './io/fonts';
+import { DEFAULT_FONT, textArtwork } from './io/fonts';
 import type { NestResult } from './core/nest';
 import { nestOptionsOf, nestParts, sheetToDxf } from './core/sheets';
 import type { ProjectSettings } from './core/project';
@@ -409,7 +409,7 @@ export const useApp = create<State>((set, get) => {
       const design = project?.designs.find((d) => d.surfaceId === designSurfaceId);
       const surface = project?.surfaces.find((s) => s.id === designSurfaceId);
       if (!project || !design || !surface) return;
-      const text = { content: project.project.boat || project.project.name || 'TEXT', font: 'montserrat' };
+      const text = { content: project.project.boat || project.project.name || 'TEXT', font: DEFAULT_FONT };
       const o = await textArtwork(text.content, text.font);
       const stored: StoredArtwork = { id: newId(), name: text.content, width: o.width, height: o.height, rings: o.rings, lines: [], text };
       const graphic = placeNew(stored, surface, 'area');

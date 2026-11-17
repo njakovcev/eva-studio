@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { graphicHeight, hasLayers, type Graphic } from '../core/artwork';
 import { designPanel, type Design } from '../core/design';
 import { CUSTOM_PREFIX, PATTERNS, defaultParams, findPattern } from '../core/patterns';
-import { FONTS } from '../io/fonts';
+import { FONTS, retiredFont } from '../io/fonts';
 import { colourWidth, describeTool, grooveWidth, machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { mm } from './format';
@@ -183,6 +183,7 @@ function GraphicCard({ graphic: g }: { graphic: Graphic }) {
         <div className="opening__dist">
           <input value={content} onChange={(e) => setContent(e.target.value)} onBlur={() => { if (content.trim() && content !== art.text!.content) void editText(art.id, content, art.text!.font); else setContent(art.text!.content); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
           <select value={art.text.font} onChange={(e) => void editText(art.id, art.text!.content, e.target.value)}>
+            {retiredFont(art.text.font) && <option value={art.text.font}>{retiredFont(art.text.font)!.name}</option>}
             {FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
