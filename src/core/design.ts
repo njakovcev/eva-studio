@@ -93,6 +93,10 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   let keepOut: Region = [];        // where the pattern (and border) must not run
   const graphicLines: number[][] = [];
   let pockets: Region = [];
+  // a cleared shape reaches further at the surface than drawn: its sloped sides (T11 at 3.5 deep: 2.6 mm; T9: none)
+  const slopeOf = (t: Tool) => Math.max(0, radiusAtHeight(t, design.depth) - radiusAtHeight(t, Math.max(0, design.depth - machining.topLayer)));
+  // filled shapes that come so close that the cutter's sloped sides leave no top colour between them
+  let crowded: Region = [];
   // logos and text with a tool of their own go to that tool's layers
   const extra = new Map<number, { tool: Tool; lines: number[][]; pockets: Region }>();
   const forTool = (t: Tool) => { let e = extra.get(t.number); if (!e) { e = { tool: t, lines: [], pockets: [] }; extra.set(t.number, e); } return e; };
@@ -133,6 +137,17 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
         const lost = regionArea(mine) - regionArea(grow(grow(mine, -r), r));
         if (lost > Math.max(20, 0.03 * regionArea(mine))) warnings.push(`Parts of “${art.text ? art.text.content : art.name}” are narrower than the cutter (T${areaTool.number}, ${(2 * r).toFixed(1)} mm) and cannot be milled out fully. Make it larger, choose a smaller tool for it, use a smaller gap between shapes, or use lines instead of filled.`);
         if (own) { const e = forTool(own); e.pockets = union(e.pockets, mine); } else pockets = union(pockets, mine);
+        if (machining.minStrip > 0) {
+          // the top colour between the shapes as drawn, too narrow for both slopes and a strip to fit
+          const reach = slopeOf(areaTool) + machining.minStrip / 2;
+          const between = subtract(body, mine);
+          const tight = intersect(subtract(between, grow(grow(between, -reach), reach)), grow(mine, reach + 0.5));
+          const places = tight.filter((ring) => regionArea([ring]) > machining.minStrip * machining.minStrip);
+          if (places.length) {
+            crowded = union(crowded, places);
+            warnings.push(`Parts of “${art.text ? art.text.content : art.name}” are too close together in ${places.length} place${places.length === 1 ? '' : 's'} (red in the preview): the sloped sides of T${areaTool.number} take ${slopeOf(areaTool).toFixed(1)} mm round every shape, so less than ${machining.minStrip} mm of top colour stays between them, or none. Space the letters further apart, make it larger, or choose a tool with straight sides.`);
+          }
+        }
       }
       keepOut = union(keepOut, union(grow(placed.rings, Math.max(0, g.clearance)), thicken(placed.lines, g.clearance)));
       if (placed.lines.length) addLines(clipLines(placed.lines, body));
@@ -179,14 +194,14 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   const byTool = [...extra.values()].sort((a, b) => a.tool.number - b.tool.number);
 
   // --- what is left of the top colour, and where it gets too thin to hold ---
-  const thinStrips = machining.minStrip > 0 ? findThinStrips() : [];
+  const strips = machining.minStrip > 0 ? findThinStrips() : [];
+  const thinStrips = union(strips, crowded);
   function findThinStrips(): Region {
     const holes = (panel.cutouts ?? []).map((c) => cutoutOutline(c).flat);
     const body = holes.length ? subtract([cut.flat], holes) : [cut.flat];
     const loop = (f: number[]) => [...f, f[0], f[1]];
     const grooves = (lines: number[][], t: Tool) => thicken(lines, grooveFootprint(machining, t, design.depth).width / 2);
-    // a cleared shape reaches further at the surface: its sloped sides (2.6 mm for T11 at 3.5 deep)
-    const slope = (t: Tool) => Math.max(0, radiusAtHeight(t, design.depth) - radiusAtHeight(t, Math.max(0, design.depth - machining.topLayer)));
+    const slope = slopeOf;
     let milled = union(
       grooves([...(shownBorder ? [loop(shownBorder.flat)] : []), ...(borderLines ?? []), ...pattern, ...graphicLines], machining.groove),
       grow(pockets, slope(machining.pocket)),
@@ -199,7 +214,7 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
     // leave out the slivers every sharp corner loses
     return thin.filter((ring) => regionArea([ring]) > machining.minStrip * machining.minStrip);
   }
-  if (thinStrips.length) warnings.push(`The top colour left between the milled parts is narrower than ${machining.minStrip} mm in ${thinStrips.length} place${thinStrips.length === 1 ? '' : 's'} (red in the preview). Such strips tear or break off. Move things apart, use a smaller tool for logos and text, or mill less deep.`);
+  if (strips.length) warnings.push(`The top colour left between the milled parts is narrower than ${machining.minStrip} mm in ${strips.length} place${strips.length === 1 ? '' : 's'} (red in the preview). Such strips tear or break off. Move things apart, use a smaller tool for logos and text, or mill less deep.`);
   const result: PanelDesign = {
     cut, border: shownBorder, borderLines, pattern, graphicLines, pockets, byTool, thinStrips,
     millLength: (machining.passes.on ? 2 : 1) * ((shownBorder ? closedLength(shownBorder.flat) : 0) + linesLength(borderLines ?? []) + linesLength(pattern) + linesLength(graphicLines) + byTool.reduce((s, b) => s + linesLength(b.lines), 0)),

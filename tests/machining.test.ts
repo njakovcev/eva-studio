@@ -151,3 +151,25 @@ describe('end mill T9', () => {
     expect(edgeMilling(T9, 5, 2, 6, 3)).toMatch(/cannot round an edge/);
   });
 });
+
+describe('filled shapes close together', () => {
+  const settings = createProject({ name: 'x' }).settings;
+  const { machining } = machiningOf(settings);
+  // two squares 20 mm across, `gap` mm apart, cleared out with T11 (its slopes take 2.6 mm round each)
+  const lib = (gap: number) => ({ artworks: [{ id: 'a', name: 'two', width: 40 + gap, height: 20, rings: [[0, 0, 20, 0, 20, 20, 0, 20], [20 + gap, 0, 40 + gap, 0, 40 + gap, 20, 20 + gap, 20]], lines: [] }], patterns: [] });
+  const design = (gap: number) => ({ ...createDesign('d', 's'), border: { on: false, inset: 15 }, pattern: { kind: 'none', params: {}, angle: 0, originX: 0, originY: 0 },
+    graphics: [{ id: 'g', artworkId: 'a', x: 500, y: 300, width: 40 + gap, angle: 0, mode: 'area' as const, clearance: 0 }] });
+  it('are found when the slopes leave no top colour between them', () => {
+    const d = designPanel(panel(), design(4), lib(4), machining); // 4 mm < 2 × 2.6 + 3
+    expect(d.thinStrips.length).toBeGreaterThan(0);
+    expect(d.warnings.join(' ')).toMatch(/too close together/);
+  });
+  it('are fine with room for both slopes and a strip', () => {
+    const d = designPanel(panel(), design(10), lib(10), machining); // 10 mm > 8.2
+    expect(d.warnings.join(' ')).not.toMatch(/too close together/);
+  });
+  it('need no room for slopes with an end mill', () => {
+    const d = designPanel(panel(), { ...design(4), graphics: [{ ...design(4).graphics[0], tool: 9 }] }, lib(4), machining); // 4 mm > 3
+    expect(d.warnings.join(' ')).not.toMatch(/too close together/);
+  });
+});
