@@ -13,7 +13,9 @@ export type ToolProfile =
    */
   | { kind: 'form'; tipDiameter: number; tipHeight: number; radius: number }
   /** ball: a sphere of this radius */
-  | { kind: 'ball'; radius: number };
+  | { kind: 'ball'; radius: number }
+  /** end mill with a flat end: straight sides, cutting `length` mm high */
+  | { kind: 'flat'; diameter: number; length: number };
 
 export interface Tool {
   /** number in the machine's tool list (T11 → 11) */
@@ -45,12 +47,19 @@ export const T12: Tool = {
   profile: { kind: 'form', tipDiameter: 3.15, tipHeight: 2, radius: 1.575 },
   rpm: 18000, feed: 3500, plunge: 800,
 };
+/** T9: end mill Ø6, 2 flutes, up & down cut (6 × 25 × 50): flat end, straight sides, for clearing out larger shapes. */
+export const T9: Tool = {
+  number: 9, name: 'End mill Ø6, up & down cut',
+  profile: { kind: 'flat', diameter: 6, length: 25 },
+  rpm: 18000, feed: 3500, plunge: 800,
+};
 export const DEFAULT_GROOVE_TOOL = T11;
-export const DEFAULT_TOOLS: Tool[] = [T10, T11, T12];
+export const DEFAULT_TOOLS: Tool[] = [T9, T10, T11, T12];
 
 /** How far from its axis the tool cuts at `height` above its lowest point, mm. */
 export function radiusAtHeight(tool: Tool, height: number): number {
   const p = tool.profile, h = Math.max(0, height);
+  if (p.kind === 'flat') return p.diameter / 2;
   if (p.kind === 'ball') return h >= p.radius ? p.radius : Math.sqrt(p.radius * p.radius - (p.radius - h) ** 2);
   if (h <= p.tipHeight) return p.tipDiameter / 2;
   // the rounded corner: flat where it leaves the tip, upright where it meets the body
@@ -71,11 +80,12 @@ export const colourWidth = (tool: Tool, depth: number, topLayer: number) =>
 /** Largest cutting diameter. */
 export function maxDiameter(tool: Tool): number {
   const p = tool.profile;
-  return p.kind === 'ball' ? 2 * p.radius : p.tipDiameter + 2 * p.radius;
+  return p.kind === 'flat' ? p.diameter : p.kind === 'ball' ? 2 * p.radius : p.tipDiameter + 2 * p.radius;
 }
 
 export function describeTool(t: Tool): string {
   const p = t.profile;
+  if (p.kind === 'flat') return `T${t.number} · end mill Ø${p.diameter}`;
   return p.kind === 'ball' ? `T${t.number} · ball Ø${2 * p.radius}` : `T${t.number} · form Ø${p.tipDiameter}, R${p.radius}`;
 }
 
@@ -144,6 +154,7 @@ export function edgeMilling(tool: Tool, bottomDepth: number, leftAtEdge: number,
   if (atEdge > bottomDepth) return `To leave ${leftAtEdge} mm at the edge the tool must go at least ${atEdge} mm deep. Set the depth to ${atEdge} mm or more.`;
   const rise = bottomDepth - atEdge;
   const p = tool.profile;
+  if (p.kind === 'flat') return `T${tool.number} has a flat end and straight sides, so it cannot round an edge. Choose a ball or form cutter.`;
   const maxRise = p.kind === 'ball' ? p.radius : p.tipHeight + p.radius;
   if (rise > maxRise) return `T${tool.number} is too small for this: its rounded part is only ${maxRise} mm high.`;
   const offset = radiusAtHeight(tool, rise);

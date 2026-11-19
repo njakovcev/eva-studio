@@ -35,6 +35,8 @@ export interface Graphic {
   mode: 'line' | 'area';
   /** tool number to mill it with; left out: the project's tool for grooves (lines) or for clearing out (filled) */
   tool?: number;
+  /** when filled: tool for the artwork's stroked lines; left out: the project's tool for grooves */
+  lineTool?: number;
   /** the pattern is kept this far away from the artwork, mm (0 with 'line': pattern runs straight through) */
   clearance: number;
   /**

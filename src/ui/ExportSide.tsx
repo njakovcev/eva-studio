@@ -179,15 +179,16 @@ function MachiningSettings({ settings, depths }: { settings: ProjectSettings; de
 function ToolList({ settings }: { settings: ProjectSettings }) {
   const { updateSettings } = useApp();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState({ number: '', kind: 'ball' as 'ball' | 'form', a: '', b: '', c: '', name: '' });
+  const [draft, setDraft] = useState({ number: '', kind: 'ball' as 'ball' | 'form' | 'flat', a: '', b: '', c: '', name: '' });
   const used = new Set([settings.machining.groove, settings.machining.pocket, ...(settings.machining.edge.on ? [settings.machining.edge.tool] : [])]);
   const add = () => {
     const n = Number(draft.number), a = Number(draft.a.replace(',', '.')), b = Number(draft.b.replace(',', '.')), c = Number(draft.c.replace(',', '.'));
     if (!Number.isInteger(n) || n <= 0) { useApp.setState({ error: 'Give the tool its number from the machine’s tool list (e.g. 22).' }); return; }
     if (settings.tools.some((t) => t.number === n)) { useApp.setState({ error: `There is already a tool T${n}. Remove it first or use another number.` }); return; }
     const profile = draft.kind === 'ball' ? (a > 0 ? { kind: 'ball' as const, radius: a / 2 } : null)
-      : (a > 0 && b >= 0 && c > 0 ? { kind: 'form' as const, tipDiameter: a, tipHeight: b, radius: c } : null);
-    if (!profile) { useApp.setState({ error: draft.kind === 'ball' ? 'Enter the ball diameter.' : 'Enter the tip diameter, tip height and radius of the profile.' }); return; }
+      : draft.kind === 'flat' ? (a > 0 && b > 0 ? { kind: 'flat' as const, diameter: a, length: b } : null)
+        : (a > 0 && b >= 0 && c > 0 ? { kind: 'form' as const, tipDiameter: a, tipHeight: b, radius: c } : null);
+    if (!profile) { useApp.setState({ error: draft.kind === 'ball' ? 'Enter the ball diameter.' : draft.kind === 'flat' ? 'Enter the diameter and the cutting length.' : 'Enter the tip diameter, tip height and radius of the profile.' }); return; }
     const tool: Tool = { number: n, name: draft.name.trim() || `T${n}`, profile, rpm: 18000, feed: 3000, plunge: 800 };
     void updateSettings({ tools: [...settings.tools, tool].sort((x, y) => x.number - y.number) });
     setDraft({ number: '', kind: 'ball', a: '', b: '', c: '', name: '' }); setOpen(false);
@@ -206,10 +207,13 @@ function ToolList({ settings }: { settings: ProjectSettings }) {
       {!open ? <button className="small" onClick={() => setOpen(true)}>+ Add a tool</button> : (
         <div className="tool-form">
           <div className="row"><span>Number T</span><input className="num" inputMode="numeric" value={draft.number} onChange={(e) => setDraft({ ...draft, number: e.target.value })} />
-            <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as 'ball' | 'form' })}><option value="ball">Ball</option><option value="form">Form cutter</option></select></div>
+            <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as 'ball' | 'form' | 'flat' })}><option value="ball">Ball</option><option value="form">Form cutter</option><option value="flat">End mill (flat end)</option></select></div>
           {draft.kind === 'ball'
             ? <div className="row"><span>Ball diameter</span><input className="num" inputMode="decimal" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} /><span>mm</span></div>
-            : <>
+            : draft.kind === 'flat' ? <>
+              <div className="row"><span>Diameter</span><input className="num" inputMode="decimal" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} /><span>mm</span></div>
+              <div className="row"><span>Cutting length</span><input className="num" inputMode="decimal" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} /><span>mm</span></div>
+            </> : <>
               <div className="row"><span>Tip diameter</span><input className="num" inputMode="decimal" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} /><span>mm</span></div>
               <div className="row"><span>Tip height (straight part)</span><input className="num" inputMode="decimal" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} /><span>mm</span></div>
               <div className="row"><span>Profile radius above it</span><input className="num" inputMode="decimal" value={draft.c} onChange={(e) => setDraft({ ...draft, c: e.target.value })} /><span>mm</span></div>

@@ -14,9 +14,9 @@ import type { Design } from './design';
 import type { StoredArtwork } from './artwork';
 import type { StoredPattern } from './patterns';
 import type { Sketch } from './sketch/model';
-import { DEFAULT_TOOLS, T12, defaultMachiningSettings, type MachiningSettings, type Tool } from './tools';
+import { DEFAULT_TOOLS, T9, T12, defaultMachiningSettings, type MachiningSettings, type Tool } from './tools';
 
-export const FORMAT_VERSION = 4;
+export const FORMAT_VERSION = 5;
 export const PROJECT_FILE = 'project.json';
 export const FOLDERS = { scans: 'scans', graphics: 'graphics', photos: 'photos', export: 'export' } as const;
 
@@ -152,6 +152,14 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
     if (!tools.some((t) => t.number === 12)) settings.tools = [...tools, { ...T12, profile: { ...T12.profile } }].sort((a, b) => a.number - b.number);
     raw = { ...raw, settings, formatVersion: 4 };
     version = 4;
+  }
+  if (version === 4) {
+    // v5: the end mill T9 joins the tool list (unless the project already has a T9)
+    const settings = { ...((raw.settings as Record<string, unknown>) ?? {}) };
+    const tools = Array.isArray(settings.tools) ? (settings.tools as { number: number }[]) : [];
+    if (!tools.some((t) => t.number === 9)) settings.tools = [{ ...T9, profile: { ...T9.profile } }, ...tools].sort((a, b) => a.number - b.number);
+    raw = { ...raw, settings, formatVersion: 5 };
+    version = 5;
   }
   return raw;
 }

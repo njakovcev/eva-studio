@@ -99,11 +99,18 @@ export function designPanel(panel: Panel, design: Design, library: DesignLibrary
   for (const g of design.graphics ?? []) {
     const art = library.artworks.find((a) => a.id === g.artworkId);
     if (!art) continue;
-    let own = g.tool === undefined ? undefined : machining.tools.find((t) => t.number === g.tool);
-    if (g.tool !== undefined && !own) warnings.push(`T${g.tool}, chosen for “${art.text ? art.text.content : art.name}”, is not in the tool list any more. The project's tool is used instead.`);
-    const areaTool = own ?? machining.pocket;
-    if (own && own.number === (g.mode === 'area' ? machining.pocket : machining.groove).number) own = undefined;
-    const addLines = (lines: number[][]) => { if (own) forTool(own).lines.push(...lines); else graphicLines.push(...lines); };
+    const find = (n: number | undefined) => {
+      if (n === undefined) return undefined;
+      const t = machining.tools.find((x) => x.number === n);
+      if (!t) warnings.push(`T${n}, chosen for “${art.text ? art.text.content : art.name}”, is not in the tool list any more. The project's tool is used instead.`);
+      return t;
+    };
+    // filled: `tool` clears the shapes, `lineTool` mills the stroked lines; lines: `tool` mills everything
+    const areaChoice = g.mode === 'area' ? find(g.tool) : undefined, lineChoice = find(g.mode === 'area' ? g.lineTool : g.tool);
+    const areaTool = areaChoice ?? machining.pocket;
+    const own = areaChoice && areaChoice.number !== machining.pocket.number ? areaChoice : undefined;
+    const lineOwn = lineChoice && lineChoice.number !== machining.groove.number ? lineChoice : undefined;
+    const addLines = (lines: number[][]) => { if (lineOwn) forTool(lineOwn).lines.push(...lines); else graphicLines.push(...lines); };
     const placed = placeArtwork(art, g);
     const separate = (g.separation ?? 0) > 0 && placed.layers.length > 1;
     if (g.mode === 'area' && placed.rings.length) {

@@ -104,8 +104,8 @@ describe('choosing tools', () => {
     const old = JSON.parse(serializeProject(createProject({ name: 'old' })));
     old.formatVersion = 1; old.settings.tools = []; delete old.settings.machining;
     const p = parseProject(JSON.stringify(old));
-    expect(p.formatVersion).toBe(4);
-    expect(p.settings.tools.map((t) => t.number)).toEqual([10, 11, 12]);
+    expect(p.formatVersion).toBe(5);
+    expect(p.settings.tools.map((t) => t.number)).toEqual([9, 10, 11, 12]);
     expect(p.settings.machining.edge).toEqual({ on: true, tool: 10, bottomDepth: 5, leftAtEdge: 2 });
   });
 
@@ -115,8 +115,8 @@ describe('choosing tools', () => {
     old.settings.tools = [{ ...T10, number: 20 }, { ...T11, number: 21 }, { ...T11, number: 22, name: 'mine' }];
     old.settings.machining = { groove: 21, pocket: 22, edge: { on: true, tool: 20, bottomDepth: 5, leftAtEdge: 2 } };
     const p = parseProject(JSON.stringify(old));
-    expect(p.settings.tools.map((t) => t.number)).toEqual([10, 11, 12]);
-    expect(p.settings.tools[2].name).toBe('mine'); // their own T22 stays, as T12
+    expect(p.settings.tools.map((t) => t.number)).toEqual([9, 10, 11, 12]); // T9 added in format 5
+    expect(p.settings.tools[3].name).toBe('mine'); // their own T22 stays, as T12
     expect(p.settings.machining).toMatchObject({ groove: 11, pocket: 12, edge: { tool: 10 } });
   });
 });
@@ -141,4 +141,13 @@ describe('strips of top colour', () => {
     expect(designPanel(panel(), design(12), undefined, off).thinStrips).toEqual([]);
   });
   it('keeps new panels 25 mm from the sheet edge', () => expect(settings.sheetMargin).toBe(25));
+});
+
+describe('end mill T9', () => {
+  it('cuts its full diameter at any depth, with straight sides', async () => {
+    const { T9, grooveWidth, colourWidth, edgeMilling } = await import('../src/core/tools');
+    expect(grooveWidth(T9, 3.5)).toBe(6);
+    expect(colourWidth(T9, 3.5, 3)).toBe(6);
+    expect(edgeMilling(T9, 5, 2, 6, 3)).toMatch(/cannot round an edge/);
+  });
 });

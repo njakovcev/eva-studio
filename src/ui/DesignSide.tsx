@@ -206,13 +206,22 @@ function GraphicCard({ graphic: g }: { graphic: Graphic }) {
             {hasAreas && <option value="area">Filled (shapes milled out)</option>}
           </select>
         </label>
-        <label>Tool
+        <label>{g.mode === 'area' && art.lines.length ? 'Tool, filled' : 'Tool'}
           <select value={g.tool ?? ''} onChange={(e) => set({ tool: e.target.value === '' ? undefined : Number(e.target.value) })}>
             <option value="">{`As the project (T${g.mode === 'area' ? machining.pocket.number : machining.groove.number})`}</option>
             {g.tool !== undefined && !machining.tools.some((t) => t.number === g.tool) && <option value={g.tool}>T{g.tool} (not in the list)</option>}
             {machining.tools.map((t) => <option key={t.number} value={t.number}>{describeTool(t)}</option>)}
           </select>
         </label>
+        {g.mode === 'area' && art.lines.length > 0 && (
+          <label>Tool, lines
+            <select value={g.lineTool ?? ''} onChange={(e) => set({ lineTool: e.target.value === '' ? undefined : Number(e.target.value) })}>
+              <option value="">{`As the project (T${machining.groove.number})`}</option>
+              {g.lineTool !== undefined && !machining.tools.some((t) => t.number === g.lineTool) && <option value={g.lineTool}>T{g.lineTool} (not in the list)</option>}
+              {machining.tools.map((t) => <option key={t.number} value={t.number}>{describeTool(t)}</option>)}
+            </select>
+          </label>
+        )}
         <label>Pattern stays <Num value={g.clearance} onCommit={(v) => v >= 0 && set({ clearance: v })} /> mm away</label>
       </div>
       {hasLayers(art) && (

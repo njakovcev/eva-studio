@@ -186,8 +186,10 @@ describe('artwork on a panel', () => {
     expect(d.pocketArea).toBeCloseTo(400 * 200 - 200 * 100, 0);
     expect(d.pockets.length).toBe(0); // not with the project's tool
     expect(d.byTool.map((b) => b.tool.number)).toEqual([12]);
-    expect(d.byTool[0].lines.length).toBe(1);
-    const dxf = designedPanelToDxf(p, undefined, { ...base, graphics: [{ ...g, tool: 12 }] }, lib);
+    expect(d.byTool[0].lines.length).toBe(0); // its stroked line stays with the project's groove tool…
+    const both = designPanel(p, { ...base, graphics: [{ ...g, tool: 12, lineTool: 12 }] }, lib);
+    expect(both.byTool[0].lines.length).toBe(1); // …unless it has a line tool of its own
+    const dxf = designedPanelToDxf(p, undefined, { ...base, graphics: [{ ...g, tool: 12, lineTool: 12 }] }, lib);
     for (const layer of ['1_T11_GROOVE_3_5MM', '1_T12_GROOVE_3_5MM', '2_T12_POCKET_3_5MM']) expect(dxf, layer).toContain(layer);
     // the layer table lists them in running order
     const table = dxf.slice(0, dxf.indexOf('ENTITIES'));
