@@ -126,15 +126,15 @@ describe('strips of top colour', () => {
   const { machining } = machiningOf(settings);
   const design = (inset: number) => ({ ...createDesign('d', 's'), border: { on: true, inset }, pattern: { kind: 'none', params: {}, angle: 0, originX: 0, originY: 0 } });
   it('are fine when the border groove is far enough from the rounded edge', () => {
-    // rounded edge reaches 5.1 mm in, the border groove (T11, 3.5 deep, two passes) 5.2 mm each side of its line
-    const d = designPanel(panel(), design(15), undefined, machining);
+    // rounded edge reaches 5.1 mm in, the border groove (T11, 3.5 deep, two passes) 5.2 mm each side of its line: 16 − 10.3 = 5.7 mm left
+    const d = designPanel(panel(), design(16), undefined, machining);
     expect(d.thinStrips).toEqual([]);
-    expect(d.warnings.join(' ')).not.toMatch(/narrower than 3 mm/);
+    expect(d.warnings.join(' ')).not.toMatch(/narrower than 5 mm/);
   });
   it('are found when the border groove comes too close to the rounded edge', () => {
-    const d = designPanel(panel(), design(12), undefined, machining); // 12 − 5.2 − 5.1 = 1.7 mm left
+    const d = designPanel(panel(), design(14), undefined, machining); // 14 − 5.2 − 5.1 = 3.7 mm left: tears (19. 11.)
     expect(d.thinStrips.length).toBeGreaterThan(0);
-    expect(d.warnings.join(' ')).toMatch(/narrower than 3 mm/);
+    expect(d.warnings.join(' ')).toMatch(/narrower than 5 mm/);
   });
   it('can be switched off', () => {
     const off = machiningOf({ ...settings, machining: { ...settings.machining, minStrip: 0 } }).machining;
@@ -165,11 +165,11 @@ describe('filled shapes close together', () => {
     expect(d.warnings.join(' ')).toMatch(/too close together/);
   });
   it('are fine with room for both slopes and a strip', () => {
-    const d = designPanel(panel(), design(10), lib(10), machining); // 10 mm > 8.2
+    const d = designPanel(panel(), design(12), lib(12), machining); // 12 mm > 2 × 2.6 + 5
     expect(d.warnings.join(' ')).not.toMatch(/too close together/);
   });
   it('need no room for slopes with an end mill', () => {
-    const d = designPanel(panel(), { ...design(4), graphics: [{ ...design(4).graphics[0], tool: 9 }] }, lib(4), machining); // 4 mm > 3
+    const d = designPanel(panel(), { ...design(6), graphics: [{ ...design(6).graphics[0], tool: 9 }] }, lib(6), machining); // 6 mm > 5
     expect(d.warnings.join(' ')).not.toMatch(/too close together/);
   });
 });
