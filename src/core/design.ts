@@ -36,7 +36,7 @@ export function createDesign(id: string, surfaceId: string): Design {
   const def = patternById('lines')!;
   return {
     id, surfaceId,
-    border: { on: true, inset: 16 }, // leaves 5.7 mm of top colour between the rounded edge (5.1) and the groove (5.2), 19. 11.
+    border: { on: true, inset: 15 },
     pattern: { kind: 'lines', params: defaultParams(def), angle: 0, originX: 0, originY: 0 },
     depth: 3.5, // 3.0 sits exactly on the boundary between the layers; 3.5 shows the bottom colour reliably (tried on the machine 17. 11.)
     graphics: [],
