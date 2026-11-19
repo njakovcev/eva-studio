@@ -31,19 +31,38 @@ export interface SheetSummary {
   sheet: number;
   panels: number;
   usedLength: number;
+  /** how far across the sheet the panels reach, mm (including the edge margin): with usedLength, the corner of the used piece */
+  usedWidth: number;
   /** share of the used length that is actually panel, 0…1 */
   fill: number;
-  /** what is left of the sheet beyond the used length, mm */
+  /** what is left of the sheet beyond the used length, mm (a piece of full sheet width) */
   offcut: number;
+  /** the piece beside the panels, within the used length: usedLength × this, mm */
+  sideOffcut: number;
+}
+
+/** Per sheet: how far across the sheet the placed panels reach, edge margin included. */
+export function usedWidths(project: Project, result: NestResult): number[] {
+  const o = nestOptionsOf(project.settings);
+  const outline = new Map(project.panels.map((p) => [p.id, cutOutline(p).flat] as const));
+  return result.usedLength.map((_, sheet) => {
+    let top = 0;
+    for (const pl of result.placements) {
+      const f = pl.sheet === sheet ? outline.get(pl.partId) : undefined;
+      if (f) top = Math.max(top, bounds(applyPlacement(pl, f)).maxY);
+    }
+    return top > 0 ? Math.min(o.sheetWidth, top + o.margin) : 0;
+  });
 }
 
 export function summarize(project: Project, result: NestResult): SheetSummary[] {
   const o = nestOptionsOf(project.settings);
   const area = new Map(project.panels.map((p) => { const f = cutOutline(p).flat; let a = 0; const n = f.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; a += f[i * 2] * f[j * 2 + 1] - f[j * 2] * f[i * 2 + 1]; } return [p.id, Math.abs(a / 2)] as const; }));
+  const widths = usedWidths(project, result);
   return result.usedLength.map((used, sheet) => {
     const here = result.placements.filter((p) => p.sheet === sheet);
     const panelArea = here.reduce((s, p) => s + (area.get(p.partId) ?? 0), 0);
-    return { sheet, panels: here.length, usedLength: used, fill: used > 0 ? panelArea / (used * o.sheetWidth) : 0, offcut: Math.max(0, o.sheetLength - used) };
+    return { sheet, panels: here.length, usedLength: used, usedWidth: widths[sheet], fill: used > 0 ? panelArea / (used * o.sheetWidth) : 0, offcut: Math.max(0, o.sheetLength - used), sideOffcut: Math.max(0, o.sheetWidth - widths[sheet]) };
   });
 }
 

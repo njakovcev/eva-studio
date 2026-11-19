@@ -6,7 +6,7 @@ import type { ProjectSettings } from '../core/project';
 import { effectiveGap, nestOptionsOf, operationTotals, summarize } from '../core/sheets';
 import { describeTool, grooveFootprint, machiningOf, minimumGap, type Tool } from '../core/tools';
 import { libraryOf, useApp } from '../store';
-import { mm } from './format';
+import { count, mm } from './format';
 
 function Num({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
   const [text, setText] = useState(String(value));
@@ -68,11 +68,11 @@ export function ExportSide() {
                 <thead><tr><th>Sheet</th><th>Panels</th><th>Used</th><th>Filled</th><th>Left over</th></tr></thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.sheet}><td>{r.sheet + 1}</td><td>{r.panels}</td><td>{mm(r.usedLength)}</td><td>{Math.round(r.fill * 100)} %</td><td>{r.offcut > 1 ? mm(r.offcut) : '–'}</td></tr>
+                    <tr key={r.sheet}><td>{r.sheet + 1}</td><td>{r.panels}</td><td>{count(r.usedLength)} × {mm(r.usedWidth)}</td><td>{Math.round(r.fill * 100)} %</td><td>{r.offcut > 1 ? mm(r.offcut) : '–'}{r.sideOffcut > 1 && <><br /><span className="muted">+ {count(r.usedLength)} × {mm(r.sideOffcut)}</span></>}</td></tr>
                   ))}
                 </tbody>
               </table>
-              <small>“Filled” is the share of the used length that is panel. “Left over” is the full-width piece of sheet that remains.</small>
+              <small>“Used” is length × width the panels take, edge margin included (dashed lines on the sheet). “Filled” is the share of the used length that is panel. “Left over” is the full-width piece of sheet that remains, and below it the piece beside the panels.</small>
               {faulty.map((f) => <div key={f.name} className="notice notice--warn">{f.name} cannot be cut as it is: {f.warnings[0]}</div>)}
               {nest.unplaced.map((u) => <div key={u.partId} className="notice notice--warn">{name(u.partId)}: {u.reason}</div>)}
               {designed < project.panels.length && <div className="notice notice--warn">{project.panels.length - designed} panel{project.panels.length - designed === 1 ? ' has' : 's have'} no design yet: only the outline will be cut.</div>}

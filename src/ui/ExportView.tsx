@@ -3,7 +3,7 @@ import { designPanel, edgePaths } from '../core/design';
 import { applyPlacement } from '../core/nest';
 import { cutOutline, cutoutOutline } from '../core/panel';
 import { bounds } from '../core/poly';
-import { nestOptionsOf } from '../core/sheets';
+import { nestOptionsOf, usedWidths } from '../core/sheets';
 import { machiningOf } from '../core/tools';
 import { libraryOf, useApp } from '../store';
 import { svgPath, usePanZoom, type View } from './usePanZoom';
@@ -17,6 +17,7 @@ export function ExportView() {
   const result = useApp((s) => s.nest);
   const arranging = useApp((s) => s.arranging);
   const o = nestOptionsOf(project.settings);
+  const widths = useMemo(() => (result ? usedWidths(project, result) : []), [project, result]);
   const library = libraryOf(project);
   const material = project.settings.material;
   const svg = useRef<SVGSVGElement>(null);
@@ -39,13 +40,14 @@ export function ExportView() {
         onPointerUp={() => { drag.current = null; }}
       >
         {Array.from({ length: sheets }, (_, i) => {
-          const used = result?.usedLength[i] ?? 0;
+          const used = result?.usedLength[i] ?? 0, across = widths[i] ?? 0;
           return (
             <g key={i} transform={`translate(0 ${-lift(i)})`}>
               <rect className="sheet" x={0} y={-o.sheetWidth} width={o.sheetLength} height={o.sheetWidth} strokeWidth={2 * px} />
               <rect className="sheet__margin" x={o.margin} y={-o.sheetWidth + o.margin} width={o.sheetLength - 2 * o.margin} height={o.sheetWidth - 2 * o.margin} strokeWidth={1 * px} strokeDasharray={`${6 * px} ${5 * px}`} />
               {used > 0 && used < o.sheetLength - 1 && <line className="sheet__used" x1={used} y1={0} x2={used} y2={-o.sheetWidth} strokeWidth={1.5 * px} strokeDasharray={`${10 * px} ${6 * px}`} />}
-              <text className="sheet__title" x={0} y={-o.sheetWidth} dy={-10 * px} fontSize={14 * px}>Sheet {i + 1} · {o.sheetLength} × {o.sheetWidth} mm{used > 0 ? ` · used ${Math.round(used)} mm` : ''}</text>
+              {used > 0 && across > 0 && across < o.sheetWidth - 1 && <line className="sheet__used" x1={0} y1={-across} x2={used} y2={-across} strokeWidth={1.5 * px} strokeDasharray={`${10 * px} ${6 * px}`} />}
+              <text className="sheet__title" x={0} y={-o.sheetWidth} dy={-10 * px} fontSize={14 * px}>Sheet {i + 1} · {o.sheetLength} × {o.sheetWidth} mm{used > 0 ? ` · used ${Math.round(used)} × ${Math.round(across)} mm` : ''}</text>
             </g>
           );
         })}

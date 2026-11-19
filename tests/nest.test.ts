@@ -88,6 +88,20 @@ describe('sheet files', () => {
     expect(s.panels).toBe(3);
     expect(s.fill).toBeGreaterThan(0.5); expect(s.fill).toBeLessThanOrEqual(1);
     expect(s.usedLength + s.offcut).toBeCloseTo(2400, 6);
+    expect(s.usedWidth + s.sideOffcut).toBeCloseTo(1200, 6);
+  });
+
+  it('measures how far across the sheet the panels reach', () => {
+    // one panel 700 × 400 on its own: it reaches its own height plus the edge margin across the sheet
+    const one = { ...project, panels: [panel('b', 700, 400)] };
+    const r = nest(nestParts(one.panels), nestOptionsOf(one.settings));
+    const s = summarize(one, r)[0];
+    const pl = r.placements[0];
+    const turned = pl.angle === 90 || pl.angle === 270;
+    const across = (turned ? 700 : 400) + 2 * one.settings.sheetMargin;
+    expect(s.usedWidth).toBeGreaterThanOrEqual(across - 0.01);
+    expect(s.usedWidth).toBeLessThan(across + 3); // positions snap to a 2 mm grid
+    expect(s.usedLength).toBeGreaterThanOrEqual((turned ? 400 : 700) + 2 * one.settings.sheetMargin - 0.01);
   });
 
   it('writes every panel with its operations at its place on the sheet', () => {
