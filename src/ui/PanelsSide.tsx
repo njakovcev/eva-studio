@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PanelBowControl } from './Bow';
-import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, removeSide, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
+import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, removeSide, cutSideLength, setCutSideLength, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { newId } from '../core/project';
 import { useApp } from '../store';
@@ -76,6 +76,7 @@ function PanelDetails({ panel }: { panel: Panel }) {
   const [name, setName] = useState(panel.name);
   useEffect(() => { setName(panel.name); }, [panel.name]);
   const [allOffset, setAllOffset] = useState(project?.settings.defaultEdgeOffset ?? 15);
+  const [lengthMoves, setLengthMoves] = useState<'after' | 'before'>('after');
   const [allRadius, setAllRadius] = useState(project?.settings.defaultCornerRadius ?? 20);
   if (!project) return null;
 
@@ -127,11 +128,22 @@ function PanelDetails({ panel }: { panel: Panel }) {
         <button className="small" onClick={() => void updatePanel({ ...panel, offsets: new Array(n).fill(allOffset) })}>Apply</button>
       </div>
       <table className="sides">
-        <thead><tr><th>Side</th><th>Offset (mm)</th><th></th></tr></thead>
+        <thead><tr><th>Side</th><th title="Length of the finished panel edge, to where the straight sides would meet">Length (mm)</th><th>Offset (mm)</th><th></th></tr></thead>
         <tbody>
-          {panel.offsets.map((v, i) => (
+          {panel.offsets.map((v, i) => {
+            const length = cutSideLength(panel, i);
+            return (
             <tr key={i} className={isOn('side', i) ? 'on' : ''} onMouseEnter={() => setPanelFocus({ kind: 'side', index: i })}>
-              <td>S{i + 1}</td><td><NumberField value={v} onCommit={(x) => set('offsets', i, x)} /></td>
+              <td>S{i + 1}</td>
+              <td>
+                {length === null ? <span className="muted" title="Curved, or next to a curved side">–</span> : (
+                  <NumberField
+                    value={Math.round(length * 10) / 10} title="Type the length measured on the boat"
+                    onCommit={(x) => { try { void updatePanel(setCutSideLength(panel, i, x, lengthMoves)); } catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); } }}
+                  />
+                )}
+              </td>
+              <td><NumberField value={v} onCommit={(x) => set('offsets', i, x)} /></td>
               <td>
                 <button
                   className="ghost" title="Remove this side: its two neighbours are extended until they meet"
@@ -139,9 +151,17 @@ function PanelDetails({ panel }: { panel: Panel }) {
                 >×</button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
+      <label className="field">Typing a length moves
+        <select value={lengthMoves} onChange={(e) => setLengthMoves(e.target.value as 'after' | 'before')}>
+          <option value="after">the side after it (S2 for S1)</option>
+          <option value="before">{`the side before it (S${n} for S1)`}</option>
+        </select>
+      </label>
+      <small>Length is the finished edge of the panel (on the cut line), measured to where the straight sides would meet, as with a tape on the boat. The moved side stays parallel, so all angles stay as they are.</small>
 
       <h3>Corner rounding</h3>
       <div className="row">

@@ -289,6 +289,74 @@ export function moveCorner(panel: Panel, i: number, to: Vec2): Panel {
   return { ...panel, shape: { corners: corners.map((c, k) => (k === i ? to : c)), curves: newCurves } };
 }
 
+// ---------- side lengths ----------
+
+type Line = { p: Vec2; d: Vec2 };
+
+/** Where two lines cross (null when parallel). */
+function crossing(a: Line, b: Line): Vec2 | null {
+  const den = a.d[0] * b.d[1] - a.d[1] * b.d[0];
+  if (Math.abs(den) < 1e-9 * Math.hypot(...a.d) * Math.hypot(...b.d)) return null;
+  const t = ((b.p[0] - a.p[0]) * b.d[1] - (b.p[1] - a.p[1]) * b.d[0]) / den;
+  return [a.p[0] + a.d[0] * t, a.p[1] + a.d[1] * t];
+}
+
+/** The line of straight side k of the shape, or of the cut line (moved inside by its offset). */
+function sideLine(panel: Panel, k: number, onCut: boolean): Line {
+  const { corners } = panel.shape, n = corners.length;
+  const a = corners[k], b = corners[(k + 1) % n];
+  const d: Vec2 = [b[0] - a[0], b[1] - a[1]], l = Math.hypot(d[0], d[1]) || 1;
+  const off = onCut ? panel.offsets[k] ?? 0 : 0;
+  // counter-clockwise shape: inside is to the left
+  return { p: [a[0] - (d[1] / l) * off, a[1] + (d[0] / l) * off], d };
+}
+
+/**
+ * Length of side i of the finished panel: along the cut line, between the points where it meets
+ * its neighbouring sides (as if the corners were not rounded). Null when this side or a
+ * neighbour is curved, or when neighbours are parallel to it.
+ */
+export function cutSideLength(panel: Panel, i: number): number | null {
+  const { curves } = panel.shape, n = curves.length;
+  const before = (i - 1 + n) % n, after = (i + 1) % n;
+  if (curves[i] || curves[before] || curves[after]) return null;
+  const line = sideLine(panel, i, true);
+  const a = crossing(sideLine(panel, before, true), line), b = crossing(line, sideLine(panel, after, true));
+  return a && b ? Math.hypot(b[0] - a[0], b[1] - a[1]) : null;
+}
+
+/**
+ * Makes side i of the finished panel `length` mm long (see cutSideLength). The side after it
+ * (or before it) moves parallel to itself; every side keeps its direction, so angles stay as they are.
+ */
+export function setCutSideLength(panel: Panel, i: number, length: number, move: 'after' | 'before' = 'after'): Panel {
+  const { corners, curves } = panel.shape, n = corners.length;
+  const now = cutSideLength(panel, i);
+  if (now === null) throw new Error('The length can only be typed for a straight side between two straight sides.');
+  if (!(length > 0)) throw new Error('Type a length above 0 mm.');
+  const delta = length - now;
+  const d = sideLine(panel, i, false).d, l = Math.hypot(d[0], d[1]), u: Vec2 = [d[0] / l, d[1] / l];
+  const next = corners.slice();
+  if (move === 'after') {
+    // corner i+1 slides along side i; corner i+2 slides along side i+2, so side i+1 moves parallel
+    const j = (i + 1) % n, k = (i + 2) % n;
+    if (curves[j] || curves[k]) throw new Error('The side after this one and the one after it must be straight to move.');
+    next[j] = [corners[j][0] + u[0] * delta, corners[j][1] + u[1] * delta];
+    const meet = crossing({ p: next[j], d: sideLine(panel, j, false).d }, sideLine(panel, k, false));
+    if (!meet) throw new Error('The next two sides are parallel, so the side cannot move this way. Move the side before it instead.');
+    next[k] = meet;
+  } else {
+    const j = i, k = (i - 1 + n) % n, h = (i - 2 + n) % n;
+    if (curves[k] || curves[h]) throw new Error('The side before this one and the one before it must be straight to move.');
+    next[j] = [corners[j][0] - u[0] * delta, corners[j][1] - u[1] * delta];
+    const meet = crossing({ p: next[j], d: sideLine(panel, k, false).d }, sideLine(panel, h, false));
+    if (!meet) throw new Error('The two sides before it are parallel, so the side cannot move this way. Move the side after it instead.');
+    next[k] = meet;
+  }
+  if (polygonArea(next.flat()) <= 0) throw new Error('That length turns the panel inside out. Type a smaller change.');
+  return { ...panel, shape: { corners: next, curves } };
+}
+
 /** Removes a corner: its two sides become one straight side (keeping the offset of the first). */
 export function removeCorner(panel: Panel, i: number): Panel {
   const n = panel.shape.corners.length;
