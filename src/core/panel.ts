@@ -110,8 +110,11 @@ function join(A: Vec2[], B: Vec2[]): { x: Vec2; ia: number; ib: number } | null 
       const tA = ((q[0] - p[0]) * s[1] - (q[1] - p[1]) * s[0]) / den;
       const tB = ((q[0] - p[0]) * r[1] - (q[1] - p[1]) * r[0]) / den;
       const lastA = sa === 0, firstB = sb === 0;
-      if (tA < -1e-9 || (!lastA && tA > 1 + 1e-9)) continue;
-      if (tB > 1 + 1e-9 || (!firstB && tB < -1e-9)) continue;
+      // a side's line may also be cut back past its own start (A) or end (B): with a large offset a
+      // short side (a step) can be overrun by its neighbour, and only the lines' crossing is right
+      const wholeA = ja === 0, wholeB = kb === B.length - 2;
+      if ((!wholeA && tA < -1e-9) || (!lastA && tA > 1 + 1e-9)) continue;
+      if ((!wholeB && tB > 1 + 1e-9) || (!firstB && tB < -1e-9)) continue;
       if ((tA - 1) * lr > reach || -tB * ls > reach) continue; // would meet absurdly far away
       return { x: [p[0] + r[0] * tA, p[1] + r[1] * tA], ia: ja, ib: kb + 1 };
     }
@@ -229,7 +232,9 @@ export function cutOutline(panel: Panel): CutOutline {
  */
 export function insetCut(panel: Panel, inset: number): CutOutline {
   const { corners } = panel.shape, n = corners.length;
-  const radii = panel.radii.map((r, i) => {
+  // concentric with the corners the cut line really has (a radius reduced to fit stays reduced)
+  const used = cutOutline(panel).usedRadii;
+  const radii = used.map((r, i) => {
     const prev = sidePath(panel.shape, (i - 1 + n) % n), next = sidePath(panel.shape, i);
     const ax = prev[prev.length - 2] - prev[prev.length - 4], ay = prev[prev.length - 1] - prev[prev.length - 3];
     const bx = next[2] - next[0], by = next[3] - next[1];
