@@ -67,6 +67,9 @@ export function checkLength(s: Surface, c: Check): number {
 /** Which way the bow is on a surface, degrees from its x axis (0 when not set). */
 export const bowOf = (s: Pick<Surface, 'bow'> | undefined) => s?.bow ?? 0;
 
+/** Which way the bow is for one panel: its own setting, else its surface's. */
+export const panelBow = (panel: { bow?: number }, surface: Pick<Surface, 'bow'> | undefined) => panel.bow ?? bowOf(surface);
+
 /** An angle in degrees as 0 … < 360, rounded to 0.1°. */
 export const normalAngle = (a: number) => { const r = Math.round((((a % 360) + 360) % 360) * 10) / 10; return r >= 360 ? 0 : r; };
 

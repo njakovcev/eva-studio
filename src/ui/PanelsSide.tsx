@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PanelBowControl } from './Bow';
 import { cutLength, cutOutline, cutoutDistances, cutoutWarnings, createPanel, removeSide, setCutoutDistance, panelArea, smallestBox, type Cutout, type Panel } from '../core/panel';
 import { bounds } from '../core/poly';
 import { newId } from '../core/project';
@@ -99,7 +100,7 @@ function PanelDetails({ panel }: { panel: Panel }) {
     if (!surface) return;
     if (!confirm('This puts the panel shape back on the surface outline and resets all offsets and radii. Continue?')) return;
     const fresh = createPanel({ id: panel.id, name: panel.name, surface, settings: project.settings });
-    void updatePanel({ ...fresh, createdAt: panel.createdAt });
+    void updatePanel({ ...fresh, createdAt: panel.createdAt, ...(panel.bow !== undefined ? { bow: panel.bow } : {}) });
   };
 
   return (
@@ -117,6 +118,8 @@ function PanelDetails({ panel }: { panel: Panel }) {
       {!fits && <div className="notice notice--warn">Does not fit on one {sheet.width} × {sheet.height} mm sheet. It will have to be split into several panels.</div>}
       {[...cut.warnings, ...cutoutWarnings(panel, cut)].map((w, i) => <div key={i} className="notice notice--warn">{w}</div>)}
       {!surface && <div className="notice notice--warn">The surface this panel was made from has been deleted. The panel keeps its shape.</div>}
+
+      <PanelBowControl panel={panel} surface={surface} />
 
       <h3>Distance from the edge</h3>
       <div className="row">

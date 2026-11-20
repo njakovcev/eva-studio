@@ -1,4 +1,5 @@
-import { bowOf, normalAngle, type Surface } from '../core/surface';
+import type { Panel } from '../core/panel';
+import { bowOf, normalAngle, panelBow, type Surface } from '../core/surface';
 import { useApp } from '../store';
 
 /**
@@ -27,27 +28,48 @@ export function centreOf(corners: [number, number][] | number[][]): [number, num
   return corners.length ? [(a + c) / 2, (b + d) / 2] : [0, 0];
 }
 
+/** Buttons and an angle field for a bow arrow. */
+function BowButtons({ value, onChange }: { value: number; onChange: (angle: number) => void }) {
+  const set = (a: number) => { const v = normalAngle(a); if (v !== value) onChange(v); };
+  return (
+    <div className="row">
+      <button title="Turn the arrow a quarter turn to the left" onClick={() => set(value + 90)}>↺ 90°</button>
+      <button title="Turn the arrow a quarter turn to the right" onClick={() => set(value - 90)}>↻ 90°</button>
+      <button title="Point the arrow the other way" onClick={() => set(value + 180)}>Flip</button>
+      <input
+        key={value} className="num" inputMode="decimal" defaultValue={value} title="Angle of the arrow, degrees anticlockwise from pointing right"
+        onFocus={(e) => e.target.select()}
+        onBlur={(e) => { const v = Number(e.target.value.replace(',', '.')); if (Number.isFinite(v)) set(v); else e.target.value = String(value); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      />
+      <span>°</span>
+    </div>
+  );
+}
+
 /** Setting which way the bow is on a surface: panels go on the sheet with it along the brushing. */
 export function BowControl({ surface }: { surface: Surface }) {
   const updateSurface = useApp((s) => s.updateSurface);
-  const bow = bowOf(surface);
-  const set = (a: number) => { const v = normalAngle(a); if (v !== bow) void updateSurface({ ...surface, bow: v }); };
   return (
     <>
       <h3>Bow</h3>
-      <div className="row">
-        <button title="Turn the arrow a quarter turn to the left" onClick={() => set(bow + 90)}>↺ 90°</button>
-        <button title="Turn the arrow a quarter turn to the right" onClick={() => set(bow - 90)}>↻ 90°</button>
-        <button title="Point the arrow the other way" onClick={() => set(bow + 180)}>Flip</button>
-        <input
-          key={bow} className="num" inputMode="decimal" defaultValue={bow} title="Angle of the arrow, degrees anticlockwise from pointing right"
-          onFocus={(e) => e.target.select()}
-          onBlur={(e) => { const v = Number(e.target.value.replace(',', '.')); if (Number.isFinite(v)) set(v); else e.target.value = String(bow); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-        />
-        <span>°</span>
-      </div>
-      <small>Point the arrow at the bow. On the sheet every panel of this surface is laid with this direction along the sheet length, the way the EVA is brushed, so the brushing runs fore-aft on the boat. On a wall, point it horizontally along the wall.</small>
+      <BowButtons value={bowOf(surface)} onChange={(bow) => void updateSurface({ ...surface, bow })} />
+      <small>Point the arrow at the bow. On the sheet every panel of this surface is laid with this direction along the sheet length, the way the EVA is brushed, so the brushing runs fore-aft on the boat. On a wall, point it horizontally along the wall. One panel can have its own arrow (Panels, or click it on the sheet).</small>
+    </>
+  );
+}
+
+/** The bow of one panel: its surface's, or its own when it lies differently (a mat at the stern, a step). */
+export function PanelBowControl({ panel, surface, heading = true }: { panel: Panel; surface: Surface | undefined; heading?: boolean }) {
+  const updatePanel = useApp((s) => s.updatePanel);
+  const own = panel.bow !== undefined;
+  return (
+    <>
+      {heading && <h3>Bow</h3>}
+      <BowButtons value={panelBow(panel, surface)} onChange={(bow) => void updatePanel({ ...panel, bow })} />
+      {own
+        ? <div className="row"><small>This panel has its own arrow.</small><button className="small" onClick={() => { const { bow: _, ...rest } = panel; void updatePanel(rest); }}>Same as surface</button></div>
+        : <small>Same as its surface{surface ? ` “${surface.name}”` : ''}. Turning it here gives this panel its own arrow.</small>}
     </>
   );
 }

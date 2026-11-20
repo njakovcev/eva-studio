@@ -49,6 +49,9 @@ interface State {
   measuring: boolean;
   /** panel open in the 2D panel editor */
   openPanelId: string | null;
+  /** the panel picked on the sheet (step 5), to turn it */
+  sheetPanelId: string | null;
+  selectSheetPanel(id: string | null): void;
   panelFocus: PanelFocus;
   /** true while the user is picking the two points of a split */
   splitting: boolean;
@@ -197,7 +200,7 @@ export const useApp = create<State>((set, get) => {
     return { id: newId(), artworkId: art.id, x: Math.round((b.minX + b.maxX) / 2), y: Math.round((b.minY + b.maxY) / 2), width: Math.max(20, width), angle: 0, mode, clearance: 10 };
   };
 
-  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, nest: null, arranging: false, openSketchId: null, sketchTool: 'select' as SketchTool, sketchSelection: [] as string[], error: null, notice: null };
+  const closed = { project: null, dir: null, scan: null, step: 'scans' as Step, selectedRegion: null, openSurfaceId: null, measuring: false, openPanelId: null, sheetPanelId: null, panelFocus: null as PanelFocus, splitting: false, designSurfaceId: null, graphicFocus: null, nest: null, arranging: false, openSketchId: null, sketchTool: 'select' as SketchTool, sketchSelection: [] as string[], error: null, notice: null };
 
   return {
     ...closed, busy: null, saveState: 'saved', canUndo: false, canRedo: false,
@@ -255,8 +258,9 @@ export const useApp = create<State>((set, get) => {
       set({ scan: { id: 'quick', name: file.name, ...(await loadScanFile(file)) }, selectedRegion: null });
     }),
 
-    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null, graphicFocus: null, openSketchId: null, sketchTool: 'select', sketchSelection: [] }),
+    setStep: (step) => set({ step, openSurfaceId: null, measuring: false, openPanelId: null, sheetPanelId: null, panelFocus: null, splitting: false, designSurfaceId: null, graphicFocus: null, openSketchId: null, sketchTool: 'select', sketchSelection: [] }),
     selectRegion: (id) => set({ selectedRegion: id }),
+    selectSheetPanel: (id) => set({ sheetPanelId: id }),
 
     addSurfaceFromRegion: async () => {
       const { project, scan, selectedRegion } = get();

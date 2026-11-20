@@ -9,7 +9,7 @@ import { LAYER, operationLayers, withUsedLayers } from './operations';
 import { cutOutline } from './panel';
 import { bounds } from './poly';
 import type { Project, ProjectSettings } from './project';
-import { bowOf, normalAngle } from './surface';
+import { normalAngle, panelBow } from './surface';
 import { machiningOf, minimumGap } from './tools';
 
 /** The space between panels actually used: at least what the edge tool needs. */
@@ -27,14 +27,14 @@ export function nestOptionsOf(settings: ProjectSettings): NestOptions {
 }
 
 /**
- * The panels as parts to arrange. Each is first turned so the bow of its surface points along the
+ * The panels as parts to arrange. Each is first turned so its bow (its own, else its surface's) points along the
  * sheet length (the way the sheet is brushed); the turning rule then allows half or quarter turns
  * from there.
  */
 export function nestParts(project: Pick<Project, 'panels' | 'surfaces' | 'settings'>): NestPart[] {
   const turns = nestOptionsOf(project.settings).rotations;
   return project.panels.map((p) => {
-    const base = -bowOf(project.surfaces.find((s) => s.id === p.surfaceId));
+    const base = -panelBow(p, project.surfaces.find((s) => s.id === p.surfaceId));
     return { id: p.id, outline: cutOutline(p).flat, rotations: [...new Set(turns.map((t) => normalAngle(base + t)))] };
   });
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PanelBowControl } from './Bow';
 import { edgePaths } from '../core/design';
 import { LAYER } from '../core/operations';
 import { cutOutline } from '../core/panel';
@@ -16,10 +17,11 @@ function Num({ value, onCommit }: { value: number; onCommit: (v: number) => void
 }
 
 export function ExportSide() {
-  const { project, nest, arranging, arrange, exportSheets, updateSettings, setStep } = useApp();
+  const { project, nest, arranging, arrange, exportSheets, updateSettings, setStep, sheetPanelId, selectSheetPanel } = useApp();
   const settings = project?.settings;
   const panels = project?.panels;
   const bows = project?.surfaces.map((x) => x.bow ?? 0).join(',');
+  const picked = project?.panels.find((p) => p.id === sheetPanelId);
   // arrange again whenever the panels or the rules change
   const gap = settings ? effectiveGap(settings) : 0;
   useEffect(() => { void arrange(); }, [arrange, panels, bows, gap, settings?.sheetMargin, settings?.turning, settings?.sheet.width, settings?.sheet.height]);
@@ -60,6 +62,14 @@ export function ExportSide() {
             </select>
           </label>
           <small>The EVA is brushed along the sheet length. Each panel is laid with the bow of its surface (the arrow, set in Surfaces) along the sheet, so the brushing runs fore-aft on the boat.</small>
+          {picked && (
+            <div className="picked">
+              <h3>{picked.name}</h3>
+              <PanelBowControl panel={picked} surface={project.surfaces.find((x) => x.id === picked.surfaceId)} heading={false} />
+              <button className="ghost small" onClick={() => selectSheetPanel(null)}>Done</button>
+            </div>
+          )}
+          {!picked && <small>Click a panel on the sheet to turn it on its own (for example a mat that lies across the boat).</small>}
           <small>Panels are never mirrored. Everything is milled first and cut out last, so panels stay in place while they are milled.</small>
 
           <h3>Result</h3>

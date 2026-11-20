@@ -145,4 +145,9 @@ describe('brushing direction', () => {
     const project = { ...base, settings: { ...base.settings, turning: 'none' as const }, surfaces: [surface('deck', 90), surface('wall', 0)], panels: [panel('a', 'deck', 800, 500), panel('b', 'wall', 800, 500)] };
     expect(nestParts(project).map((p) => p.rotations)).toEqual([[270], [0]]);
   });
+
+  it('lets one panel have its own bow', () => {
+    const project = { ...base, surfaces: [surface('deck', 0)], panels: [{ ...panel('a', 'deck', 800, 500), bow: 90 }, panel('b', 'deck', 800, 500)] };
+    expect(nestParts(project).map((p) => p.rotations)).toEqual([[270, 90], [0, 180]]);
+  });
 });

@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { BowArrow } from './Bow';
-import { bowOf } from '../core/surface';
+import { panelBow } from '../core/surface';
 import { designPanel, edgePaths } from '../core/design';
 import { applyPlacement } from '../core/nest';
 import { cutOutline, cutoutOutline } from '../core/panel';
@@ -18,6 +18,8 @@ export function ExportView() {
   const project = useApp((s) => s.project!);
   const result = useApp((s) => s.nest);
   const arranging = useApp((s) => s.arranging);
+  const picked = useApp((s) => s.sheetPanelId);
+  const selectSheetPanel = useApp((s) => s.selectSheetPanel);
   const o = nestOptionsOf(project.settings);
   const widths = useMemo(() => (result ? usedWidths(project, result) : []), [project, result]);
   const library = libraryOf(project);
@@ -39,7 +41,14 @@ export function ExportView() {
         ref={svg} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         onPointerDown={(e) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, view }; }}
         onPointerMove={(e) => { const d = drag.current; if (d) setView({ ...d.view, x: d.view.x - (e.clientX - d.x) * px, y: d.view.y - (e.clientY - d.y) * px }); }}
-        onPointerUp={() => { drag.current = null; }}
+        onPointerUp={(e) => {
+          const d = drag.current; drag.current = null;
+          // a click (no drag) picks the panel under the pointer, to turn it in the side panel
+          if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
+            const hit = document.elementsFromPoint(e.clientX, e.clientY).map((el) => el.closest('[data-panel]')?.getAttribute('data-panel')).find(Boolean);
+            selectSheetPanel(hit ?? null);
+          }
+        }}
       >
         {Array.from({ length: sheets }, (_, i) => {
           const used = result?.usedLength[i] ?? 0, across = widths[i] ?? 0;
@@ -63,23 +72,24 @@ export function ExportView() {
           const band = machining.edge ? edgePaths(panel, machining.edge).band : [];
           const b = bounds(applyPlacement(pl, cut.flat));
           return (
-            <g key={pl.partId} transform={`translate(0 ${-lift(pl.sheet)})`}>
+            <g key={pl.partId} data-panel={pl.partId} transform={`translate(0 ${-lift(pl.sheet)})`} style={{ cursor: 'pointer' }}>
               {/* the drawing is y-down, so a counter-clockwise turn is written as a negative angle */}
               <g transform={`translate(${pl.tx} ${-pl.ty}) rotate(${-pl.angle})`}>
                 <path fillRule="evenodd" fill={material.topColor} d={svgPath(cut.flat) + (panel.cutouts ?? []).map((c) => svgPath(cutoutOutline(c).flat)).join('')} />
                 {band.length > 0 && <path fillRule="evenodd" fill={material.bottomColor} d={band.map(svgPath).join('')} />}
                 {d && <Milled d={d} machining={machining} depth={design?.depth ?? 3} topColor={material.topColor} bottomColor={material.bottomColor} />}
                 <path className="sheet__cut" d={svgPath(cut.flat)} strokeWidth={1.5 * px} />
+                {pl.partId === picked && <path className="sheet__picked" d={svgPath(cut.flat)} strokeWidth={4 * px} />}
               </g>
               <text className="sheet__label" x={(b.minX + b.maxX) / 2} y={-(b.minY + b.maxY) / 2} fontSize={13 * px} textAnchor="middle" strokeWidth={3 * px}>{panel.name}</text>
-              <BowArrow angle={bowOf(project.surfaces.find((x) => x.id === panel.surfaceId)) + pl.angle} at={[(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2 - 40 * px]} px={px} size={60} />
+              <BowArrow angle={panelBow(panel, project.surfaces.find((x) => x.id === panel.surfaceId)) + pl.angle} at={[(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2 - 40 * px]} px={px} size={60} />
             </g>
           );
         })}
       </svg>
       {arranging && <div className="viewer__busy"><span className="spinner" />Arranging the panels…</div>}
       <div className="viewer__views"><button onClick={() => setView(fit)}>Fit</button></div>
-      <div className="viewer__hint">Drag: move the view · Wheel: zoom · Dashed frame: distance kept from the sheet edge</div>
+      <div className="viewer__hint">Click a panel to turn it · Drag: move the view · Wheel: zoom · Dashed frame: distance kept from the sheet edge</div>
     </div>
   );
 }

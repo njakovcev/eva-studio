@@ -34,6 +34,11 @@ export interface Panel {
   radii: number[];
   /** openings cut out of the panel: drains, fittings, hatches */
   cutouts?: Cutout[];
+  /**
+   * Which way the bow is for this panel only, degrees in surface coordinates (see Surface.bow).
+   * Missing: the bow of its surface.
+   */
+  bow?: number;
   createdAt: string;
 }
 

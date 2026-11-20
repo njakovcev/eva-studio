@@ -5,7 +5,8 @@ import {
   type EdgePoint, type Panel,
 } from '../core/panel';
 import { bounds, slideAlongSides } from '../core/poly';
-import { MARKER_MAX_AREA, outlinePolygonOf, type Surface } from '../core/surface';
+import { MARKER_MAX_AREA, outlinePolygonOf, panelBow, type Surface } from '../core/surface';
+import { BowArrow, centreOf } from './Bow';
 import type { Vec2 } from '../core/vec';
 import { useApp } from '../store';
 import { distToPath, svgPath, usePanZoom, type View } from './usePanZoom';
@@ -187,6 +188,7 @@ export function PanelEditor({ panel, surface }: { panel: Panel; surface: Surface
         ))}
         {siblings.map((s) => <path key={s.id} className="pe-sibling" fillRule="evenodd" d={svgPath(s.flat) + s.holes.map(svgPath).join('')} strokeWidth={1.5 * px}><title>{s.name}</title></path>)}
         <path className="pe-cut" fillRule="evenodd" d={svgPath(cut.flat) + cutouts.map((c) => svgPath(c.flat)).join('')} strokeWidth={2 * px} />
+        <BowArrow angle={panelBow(panel, surface)} at={centreOf(panel.shape.corners)} px={px} />
         {cutouts.map((c, i) => {
           const center = panel.cutouts![i].center, on = focus?.kind === 'cutout' && focus.index === i;
           return (

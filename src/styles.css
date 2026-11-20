@@ -163,6 +163,9 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .sheet { fill: color-mix(in srgb, var(--muted) 12%, transparent); stroke: var(--muted); }
 .sheet__margin { fill: none; stroke: var(--muted); opacity: .6; }
 .sheet__used { stroke: #ff8c1a; }
+.sheet__picked { fill: none; stroke: #ff8c1a; }
+.picked { border: 1px solid #ff8c1a; border-radius: 8px; padding: 4px 10px 10px; margin: 8px 0; }
+.picked h3 { margin-top: 6px; }
 .bow line { stroke: #ff8c1a; stroke-linecap: round; }
 .bow path { fill: #ff8c1a; }
 .bow text { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; }
