@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { longestStraightSide, straightenAngle, turnSurface, turnSurfaceInProject } from './core/turn';
 import { createProject, newId, uniqueName, type Project, type ScanRef } from './core/project';
 import { createSurface, surfaceFromSketch, surfaceToDxf, updateFromSketch, type Surface } from './core/surface';
 import { emptySketch, type Sketch, type SketchPhoto } from './core/sketch/model';
@@ -87,6 +88,8 @@ interface State {
   setMeasuring(on: boolean): void;
   /** `save: false` while dragging; the last change of a gesture must save. */
   updateSurface(surface: Surface, save?: boolean): Promise<void>;
+  /** turns the drawing of a scanned surface (with its panels and design) by this many degrees, anticlockwise */
+  turnSurface(id: string, degrees: number): Promise<void>;
   deleteSurface(id: string): Promise<void>;
   exportSurfaceDxf(id: string): Promise<void>;
   addPanel(surfaceId: string): Promise<void>;
@@ -268,7 +271,9 @@ export const useApp = create<State>((set, get) => {
       const region = scan.regions[selectedRegion];
       try {
         const name = uniqueName(`Surface ${project.surfaces.length + 1}`, project.surfaces.map((s) => s.name));
-        const surface = createSurface({ id: newId(), name, scanId: scan.id, region, raw: region.raw, orientation: scan.orientation });
+        const made = createSurface({ id: newId(), name, scanId: scan.id, region, raw: region.raw, orientation: scan.orientation });
+        // start straight: its longest straight side level or upright
+        const surface = turnSurface(made, straightenAngle(made, longestStraightSide(made)));
         set({ openSurfaceId: surface.id, selectedRegion: null });
         await persist({ ...project, surfaces: [...project.surfaces, surface] });
       } catch (e) {
@@ -289,6 +294,13 @@ export const useApp = create<State>((set, get) => {
       if (!project) return;
       const next = { ...project, surfaces: project.surfaces.map((s) => (s.id === surface.id ? surface : s)) };
       if (save) await persist(next); else set({ project: next });
+    },
+
+    turnSurface: async (id, degrees) => {
+      const { project } = get();
+      if (!project) return;
+      try { await persist(turnSurfaceInProject(project, id, degrees)); }
+      catch (e) { set({ error: message(e) }); }
     },
 
     deleteSurface: async (id) => {

@@ -4,6 +4,7 @@ import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 import { SketchSide } from './SketchSide';
 import { fitToTape } from '../core/tapeFit';
+import { straightenAngle } from '../core/turn';
 import { BowControl } from './Bow';
 
 /** Above this, an area is called out as not flat (mm). */
@@ -71,7 +72,7 @@ export function SurfacesSide() {
 }
 
 function SurfaceDetails({ surface }: { surface: Surface }) {
-  const { updateSurface, deleteSurface, openSurface, exportSurfaceDxf, measuring, setMeasuring } = useApp();
+  const { updateSurface, turnSurface, deleteSurface, openSurface, exportSurfaceDxf, measuring, setMeasuring } = useApp();
   const checks = surface.checks ?? [];
   const [fitNote, setFitNote] = useState<{ text: string; warn: boolean } | null>(null);
   useEffect(() => setFitNote(null), [surface.id]);
@@ -119,6 +120,13 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
         <div className="notice notice--warn">Not flat: the scan bulges by {surface.flatness.max.toFixed(1)} mm. Over the longest side that is about {lengthError.toFixed(1)} mm of length error.</div>
       )}
 
+      <h3>Turn the drawing</h3>
+      <div className="row">
+        <button title="Turn the drawing a quarter turn to the left" onClick={() => void turnSurface(surface.id, 90)}>↺ 90°</button>
+        <button title="Turn the drawing a quarter turn to the right" onClick={() => void turnSurface(surface.id, -90)}>↻ 90°</button>
+      </div>
+      <small>To straighten it, press ⊾ next to a side in the list of sides below: the drawing turns so that side is level or upright. Only the view turns: panels and design turn with it, nothing changes on the boat.</small>
+
       <BowControl surface={surface} />
 
       <h3>Corners</h3>
@@ -146,6 +154,10 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
                 />
               </td>
               <td>
+                <button
+                  className="ghost" title="Turn the drawing so this side is level (or upright)"
+                  onClick={() => void turnSurface(surface.id, straightenAngle(surface, i))}
+                >⊾</button>
                 <button
                   className="ghost" title="Remove this side: its two neighbours are extended until they meet"
                   onClick={() => { try { void updateSurface(removeSideExtend(surface, i)); } catch (e) { useApp.setState({ error: e instanceof Error ? e.message : String(e) }); } }}
