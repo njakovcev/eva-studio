@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { checkLength, recleanSurface, lengthErrorFromBulge, removeSideExtend, surfaceArea, withAnchors, MARKER_MAX_AREA, type Surface } from '../core/surface';
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 import { SketchSide } from './SketchSide';
+import { fitToTape } from '../core/tapeFit';
 import { BowControl } from './Bow';
 
 /** Above this, an area is called out as not flat (mm). */
@@ -72,6 +73,21 @@ export function SurfacesSide() {
 function SurfaceDetails({ surface }: { surface: Surface }) {
   const { updateSurface, deleteSurface, openSurface, exportSurfaceDxf, measuring, setMeasuring } = useApp();
   const checks = surface.checks ?? [];
+  const [fitNote, setFitNote] = useState<{ text: string; warn: boolean } | null>(null);
+  useEffect(() => setFitNote(null), [surface.id]);
+  const fit = () => {
+    try {
+      const r = fitToTape(surface);
+      void updateSurface(r.surface);
+      const parts = [`Fitted to ${r.used} measurement${r.used === 1 ? '' : 's'}; corners moved up to ${r.moved.toFixed(0)} mm.`];
+      if (r.skipped) parts.push(`${r.skipped} left out (no tape value, or not between two corners).`);
+      if (r.worst > 1) parts.push(`The measurements do not all agree with each other: one is still ${r.worst.toFixed(0)} mm off. Check that each was taken between the same two corners as in the drawing.`);
+      if (r.moved > 10) parts.push('A corner moved more than 10 mm, much more than the scanner is normally off. Before cutting, check those measurements again, especially where a corner is rounded: the drawing measures to where the two straight sides would meet.');
+      setFitNote({ text: parts.join(' '), warn: r.worst > 1 || r.moved > 10 });
+    } catch (e) {
+      setFitNote({ text: e instanceof Error ? e.message : String(e), warn: true });
+    }
+  };
   const [name, setName] = useState(surface.name);
   const { options, corners, sides, anchors } = surface.outline;
   const manual = anchors.some((a) => a.manual);
@@ -143,7 +159,7 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
       <small>“Scan differs by” over 5 mm means the scanned edge does not follow that side: tick Curved if the real edge is a curve, or add a corner.</small>
 
       <h3>Check against the boat</h3>
-      <small>Measure a distance between two corners on the boat with a tape and compare it with the drawing. Diagonals are the best check.</small>
+      <small>Measure a distance between two corners on the boat with a tape and compare it with the drawing. Diagonals are the best check. Then fit the drawing to the tape, or leave it as scanned if the scan is right.</small>
       {checks.length > 0 && (
         <table className="sides">
           <thead><tr><th></th><th>Drawing</th><th>Tape (mm)</th><th>Difference</th><th></th></tr></thead>
@@ -171,6 +187,13 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
         </table>
       )}
       <button onClick={() => setMeasuring(!measuring)}>{measuring ? 'Cancel' : 'Add a measurement'}</button>
+      {checks.some((c) => c.measured !== null) && !surface.sketchId && (
+        <>
+          <button onClick={fit}>Fit the drawing to the tape</button>
+          <small>Moves the corners so every measurement comes out as the tape showed; everything not measured stays as close to the scan as it can. Undo puts it back.</small>
+        </>
+      )}
+      {fitNote && <div className={`notice ${fitNote.warn ? 'notice--warn' : 'notice--ok'}`}>{fitNote.text}</div>}
 
       <div className="side__actions">
         <button className="primary" onClick={() => useApp.getState().setStep('panels')}>Next: make a panel →</button>
