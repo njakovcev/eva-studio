@@ -4,8 +4,9 @@ import type { SketchOutline } from './sketch/geometry';
 import { writeDxf } from './dxf';
 import type { RawOutline } from './outline';
 import { bounds, extendToMeet, polygonArea } from './poly';
+import type { Orientation } from './orientation';
 import type { Plane, Region } from './segment';
-import type { Vec2 } from './vec';
+import { cross, dot, normalize, type Vec2, type Vec3 } from './vec';
 
 export interface Surface {
   id: string;
@@ -33,6 +34,12 @@ export interface Surface {
   checks?: Check[];
   /** set when the surface was drawn by hand: its outline comes from this sketch */
   sketchId?: string;
+  /**
+   * Which way the bow is, in the surface's own coordinates: degrees counter-clockwise from its x axis.
+   * Panels are laid on the sheet with this direction along the sheet length, the way the sheet is
+   * brushed. Missing (projects before 20. 11. 2026) means 0.
+   */
+  bow?: number;
   createdAt: string;
 }
 
@@ -57,10 +64,35 @@ export function checkLength(s: Surface, c: Check): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1]);
 }
 
-export function createSurface(args: { id: string; name: string; scanId: string; region: Region; raw: RawOutline }, now = new Date()): Surface {
+/** Which way the bow is on a surface, degrees from its x axis (0 when not set). */
+export const bowOf = (s: Pick<Surface, 'bow'> | undefined) => s?.bow ?? 0;
+
+/** An angle in degrees as 0 … < 360, rounded to 0.1°. */
+export const normalAngle = (a: number) => { const r = Math.round((((a % 360) + 360) % 360) * 10) / 10; return r >= 360 ? 0 : r; };
+
+/**
+ * A first guess at where the bow is on a scanned surface. On a deck (facing up) it is the scan's
+ * longest horizontal direction, which on a boat runs fore-aft; on a wall it is horizontal along
+ * the wall. Which end is the bow cannot be told from the scan, so it may point to the stern:
+ * that does not matter on the sheet as long as panels may be turned half-way round.
+ */
+export function guessBow(plane: Plane, orientation: Orientation): number {
+  const level = Math.abs(dot(plane.normal, orientation.up)) > 0.7;
+  let dir: Vec3;
+  if (level) {
+    const r = orientation.right, k = dot(r, plane.normal);
+    dir = [r[0] - k * plane.normal[0], r[1] - k * plane.normal[1], r[2] - k * plane.normal[2]];
+  } else dir = cross(orientation.up, plane.normal);
+  if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-9) return 0;
+  dir = normalize(dir);
+  return normalAngle((Math.atan2(dot(dir, plane.v), dot(dir, plane.u)) * 180) / Math.PI);
+}
+
+export function createSurface(args: { id: string; name: string; scanId: string; region: Region; raw: RawOutline; orientation?: Orientation }, now = new Date()): Surface {
   const options = { ...DEFAULT_CLEAN };
   return {
     id: args.id, name: args.name, scanId: args.scanId,
+    ...(args.orientation ? { bow: guessBow(args.region.plane, args.orientation) } : {}),
     plane: args.region.plane,
     scannedArea: args.region.area,
     flatness: args.region.flatness,

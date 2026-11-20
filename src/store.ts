@@ -264,7 +264,7 @@ export const useApp = create<State>((set, get) => {
       const region = scan.regions[selectedRegion];
       try {
         const name = uniqueName(`Surface ${project.surfaces.length + 1}`, project.surfaces.map((s) => s.name));
-        const surface = createSurface({ id: newId(), name, scanId: scan.id, region, raw: region.raw });
+        const surface = createSurface({ id: newId(), name, scanId: scan.id, region, raw: region.raw, orientation: scan.orientation });
         set({ openSurfaceId: surface.id, selectedRegion: null });
         await persist({ ...project, surfaces: [...project.surfaces, surface] });
       } catch (e) {
@@ -480,7 +480,7 @@ export const useApp = create<State>((set, get) => {
         const result = await new Promise<NestResult>((resolve, reject) => {
           worker.onmessage = (e: MessageEvent<{ ok: true; result: NestResult } | { ok: false; error: string }>) => (e.data.ok ? resolve(e.data.result) : reject(new Error(e.data.error)));
           worker.onerror = (e) => reject(new Error(e.message || 'The panels could not be arranged.'));
-          worker.postMessage({ parts: nestParts(project.panels), options: nestOptionsOf(project.settings) });
+          worker.postMessage({ parts: nestParts(project), options: nestOptionsOf(project.settings) });
         }).finally(() => worker.terminate());
         if (ticket === arrangeTicket) set({ nest: result }); // a newer request has taken over otherwise
       } catch (e) {

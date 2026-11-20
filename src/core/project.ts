@@ -40,7 +40,7 @@ export interface ProjectSettings {
   /** arranging panels on sheets: space between parts, distance from the sheet edge (mm), and how parts may be turned */
   nestGap: number;
   sheetMargin: number;
-  /** 'half': only half-way round (keeps the brushing direction); 'quarter': any quarter turn; 'none': never */
+  /** relative to laying each panel with its surface's bow along the sheet length (the brushing): 'half': either end first; 'quarter': any quarter turn; 'none': always the same end first */
   turning: 'half' | 'quarter' | 'none';
   /** the milling tools available (v2: was an unused list of another shape; v3: renumbered T20/21/22 → T10/11/12) */
   tools: Tool[];

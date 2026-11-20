@@ -1,4 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BowArrow, centreOf } from './Bow';
+import { bowOf } from '../core/surface';
 import { newId } from '../core/project';
 import type { SkConstraint, SkDimension, SkEntity, Sketch } from '../core/sketch/model';
 import { constraintRefs, isDimension } from '../core/sketch/model';
@@ -51,6 +53,7 @@ export function SketchEditor({ sketch }: { sketch: Sketch }) {
   const tool = useApp((s) => s.sketchTool);
   const selection = useApp((s) => s.sketchSelection);
   const dir = useApp((s) => s.dir);
+  const surface = useApp((s) => s.project?.surfaces.find((x) => x.id === sketch.surfaceId));
   const { updateSketch, setSketchTool, setSketchSelection } = useApp.getState();
   const svg = useRef<SVGSVGElement>(null);
   const latest = useRef(sketch);
@@ -534,6 +537,7 @@ export function SketchEditor({ sketch }: { sketch: Sketch }) {
           return <circle key={p.id} className={`sk-pt${analysis.freePoints.has(p.id) ? ' sk-free' : ''}${open ? ' open' : ''}${on ? ' on' : ''}`} cx={p.x} cy={-p.y} r={(open ? 5 : 3.5) * px} strokeWidth={1.5 * px} />;
         })}
         {preview}
+        {surface && <BowArrow angle={bowOf(surface)} at={centreOf(surface.outline.corners)} px={px} />}
         {snapTarget && ('id' in snapTarget.ref || snapTarget.onLine) && <circle className="sk-snap" cx={snapTarget.x} cy={-snapTarget.y} r={7 * px} strokeWidth={2 * px} />}
       </svg>
       <div className="viewer__views"><button onClick={() => setView(fit)}>Fit</button></div>

@@ -16,7 +16,12 @@
  */
 import { grow, type Region } from './region';
 
-export interface NestPart { id: string; outline: number[] }
+export interface NestPart {
+  id: string;
+  outline: number[];
+  /** turns allowed for this part, degrees; when missing, those of the options */
+  rotations?: number[];
+}
 export interface NestOptions {
   /** sheet length (along X) and width, mm */
   sheetLength: number;
@@ -135,7 +140,7 @@ export function nest(parts: NestPart[], options: NestOptions): NestResult {
   const shapes = new Map<string, Shape[]>();
   const sizeOf = new Map<string, { area: number; long: number; high: number }>();
   for (const p of parts) {
-    const all = options.rotations.map((a) => rasterize(p.outline, a, pad, cell));
+    const all = (p.rotations ?? options.rotations).map((a) => rasterize(p.outline, a, pad, cell));
     const usable = all.filter((s) => s.w <= W && s.h <= H);
     if (!usable.length) { unplaced.push({ partId: p.id, reason: 'It is larger than a sheet. Split the panel into smaller ones.' }); continue; }
     shapes.set(p.id, usable);

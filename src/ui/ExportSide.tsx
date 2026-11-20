@@ -19,9 +19,10 @@ export function ExportSide() {
   const { project, nest, arranging, arrange, exportSheets, updateSettings, setStep } = useApp();
   const settings = project?.settings;
   const panels = project?.panels;
+  const bows = project?.surfaces.map((x) => x.bow ?? 0).join(',');
   // arrange again whenever the panels or the rules change
   const gap = settings ? effectiveGap(settings) : 0;
-  useEffect(() => { void arrange(); }, [arrange, panels, gap, settings?.sheetMargin, settings?.turning, settings?.sheet.width, settings?.sheet.height]);
+  useEffect(() => { void arrange(); }, [arrange, panels, bows, gap, settings?.sheetMargin, settings?.turning, settings?.sheet.width, settings?.sheet.height]);
   if (!project || !settings) return null;
 
   const o = nestOptionsOf(settings);
@@ -53,11 +54,12 @@ export function ExportSide() {
           <div className="row"><span>Distance from sheet edge</span><Num value={settings.sheetMargin} onCommit={(v) => void updateSettings({ sheetMargin: v })} /><span>mm</span></div>
           <label className="field">Turning panels
             <select value={settings.turning} onChange={(e) => void updateSettings({ turning: e.target.value as typeof settings.turning })}>
-              <option value="half">Only half-way round (keeps the brushing direction)</option>
+              <option value="half">Bow along the brushing, either end first</option>
               <option value="quarter">Any quarter turn (tighter, but the brushing runs across on some)</option>
-              <option value="none">Never turned</option>
+              <option value="none">Bow along the brushing, always the same end first</option>
             </select>
           </label>
+          <small>The EVA is brushed along the sheet length. Each panel is laid with the bow of its surface (the arrow, set in Surfaces) along the sheet, so the brushing runs fore-aft on the boat.</small>
           <small>Panels are never mirrored. Everything is milled first and cut out last, so panels stay in place while they are milled.</small>
 
           <h3>Result</h3>

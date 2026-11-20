@@ -3,6 +3,7 @@ import { checkLength, recleanSurface, lengthErrorFromBulge, removeSideExtend, su
 import { useApp } from '../store';
 import { mm, squareMetres } from './format';
 import { SketchSide } from './SketchSide';
+import { BowControl } from './Bow';
 
 /** Above this, an area is called out as not flat (mm). */
 const FLAT_LIMIT = 3;
@@ -101,6 +102,8 @@ function SurfaceDetails({ surface }: { surface: Surface }) {
       {surface.flatness.max > FLAT_LIMIT && (
         <div className="notice notice--warn">Not flat: the scan bulges by {surface.flatness.max.toFixed(1)} mm. Over the longest side that is about {lengthError.toFixed(1)} mm of length error.</div>
       )}
+
+      <BowControl surface={surface} />
 
       <h3>Corners</h3>
       <label className="field">Detail: {options.tolerance} mm

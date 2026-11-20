@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BowArrow, centreOf } from './Bow';
+import { bowOf } from '../core/surface';
 import { nearestEdgeIndex, outlinePolygon, sidePath } from '../core/cleanOutline';
 import { newId } from '../core/project';
 import { bounds, distToSegment, slideAlongSides } from '../core/poly';
@@ -197,6 +199,7 @@ export function OutlineEditor({ surface }: { surface: Surface }) {
           <path key={i} className={h.area <= MARKER_MAX_AREA ? 'ed-marker' : 'ed-hole'} d={path(h.points)} strokeWidth={1 * px} strokeDasharray={`${3 * px} ${3 * px}`} />
         ))}
         <path className="ed-clean" d={path(outlinePolygon(surface.outline))} strokeWidth={2 * px} />
+        <BowArrow angle={bowOf(surface)} at={centreOf(surface.outline.corners)} px={px} />
         {selectedSide !== null && selectedSide < corners.length && (
           <path className="pe-focus" strokeWidth={5 * px} d={sidePath(surface.outline, selectedSide).reduce((d, v, k, a) => (k % 2 ? d : `${d}${k ? 'L' : 'M'}${v},${-a[k + 1]}`), '')} />
         )}

@@ -163,6 +163,9 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .sheet { fill: color-mix(in srgb, var(--muted) 12%, transparent); stroke: var(--muted); }
 .sheet__margin { fill: none; stroke: var(--muted); opacity: .6; }
 .sheet__used { stroke: #ff8c1a; }
+.bow line { stroke: #ff8c1a; stroke-linecap: round; }
+.bow path { fill: #ff8c1a; }
+.bow text { fill: #ff8c1a; stroke: var(--canvas); paint-order: stroke; font-weight: 700; }
 .sheet__title { fill: var(--text); font-weight: 600; }
 .sheet__cut { fill: none; stroke: #d23f31; }
 .sheet__label { fill: #fff; stroke: rgb(0 0 0 / .65); paint-order: stroke; font-weight: 600; pointer-events: none; }

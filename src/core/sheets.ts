@@ -4,11 +4,12 @@
  */
 import { designPanel, edgePaths, panelOperations, type DesignLibrary } from './design';
 import { writeDxf, type DxfPolyline, type DxfText } from './dxf';
-import { applyPlacement, type NestOptions, type NestResult, type Placement } from './nest';
+import { applyPlacement, type NestOptions, type NestPart, type NestResult, type Placement } from './nest';
 import { LAYER, operationLayers, withUsedLayers } from './operations';
-import { cutOutline, type Panel } from './panel';
+import { cutOutline } from './panel';
 import { bounds } from './poly';
 import type { Project, ProjectSettings } from './project';
+import { bowOf, normalAngle } from './surface';
 import { machiningOf, minimumGap } from './tools';
 
 /** The space between panels actually used: at least what the edge tool needs. */
@@ -25,7 +26,18 @@ export function nestOptionsOf(settings: ProjectSettings): NestOptions {
   };
 }
 
-export const nestParts = (panels: Panel[]) => panels.map((p) => ({ id: p.id, outline: cutOutline(p).flat }));
+/**
+ * The panels as parts to arrange. Each is first turned so the bow of its surface points along the
+ * sheet length (the way the sheet is brushed); the turning rule then allows half or quarter turns
+ * from there.
+ */
+export function nestParts(project: Pick<Project, 'panels' | 'surfaces' | 'settings'>): NestPart[] {
+  const turns = nestOptionsOf(project.settings).rotations;
+  return project.panels.map((p) => {
+    const base = -bowOf(project.surfaces.find((s) => s.id === p.surfaceId));
+    return { id: p.id, outline: cutOutline(p).flat, rotations: [...new Set(turns.map((t) => normalAngle(base + t)))] };
+  });
+}
 
 export interface SheetSummary {
   sheet: number;

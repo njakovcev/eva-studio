@@ -79,7 +79,7 @@ describe('sheet files', () => {
     cutouts: id === 'a' ? [{ id: 'o', kind: 'circle', center: [w / 2, h / 2], diameter: 60 }] : undefined,
   });
   const project = { ...createProject({ name: 'T' }), panels: [panel('a', 900, 500), panel('b', 700, 400), panel('c', 600, 300)], designs: [createDesign('d', 's')] };
-  const result = nest(nestParts(project.panels), nestOptionsOf(project.settings));
+  const result = nest(nestParts(project), nestOptionsOf(project.settings));
 
   it('uses the project rules', () => {
     expect(nestOptionsOf(project.settings)).toMatchObject({ sheetLength: 2400, sheetWidth: 1200, margin: 25, gap: 9.8, rotations: [0, 180] }); // gap 8 raised for the rounded edge
@@ -94,7 +94,7 @@ describe('sheet files', () => {
   it('measures how far across the sheet the panels reach', () => {
     // one panel 700 × 400 on its own: it reaches its own height plus the edge margin across the sheet
     const one = { ...project, panels: [panel('b', 700, 400)] };
-    const r = nest(nestParts(one.panels), nestOptionsOf(one.settings));
+    const r = nest(nestParts(one), nestOptionsOf(one.settings));
     const s = summarize(one, r)[0];
     const pl = r.placements[0];
     const turned = pl.angle === 90 || pl.angle === 270;
@@ -116,5 +116,33 @@ describe('sheet files', () => {
     const xs = [...dxf.matchAll(/\r\n10\r\n([-\d.]+)\r\n20\r\n([-\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
     expect(Math.min(...xs.map((p) => p[0]))).toBeGreaterThanOrEqual(0); expect(Math.max(...xs.map((p) => p[0]))).toBeLessThanOrEqual(2400);
     expect(Math.min(...xs.map((p) => p[1]))).toBeGreaterThanOrEqual(0); expect(Math.max(...xs.map((p) => p[1]))).toBeLessThanOrEqual(1200);
+  });
+});
+
+describe('brushing direction', () => {
+  const panel = (id: string, surfaceId: string, w: number, h: number): Panel => ({
+    id, name: id, surfaceId, createdAt: '',
+    shape: { corners: [[0, 0], [w, 0], [w, h], [0, h]], curves: [null, null, null, null] }, offsets: [0, 0, 0, 0], radii: [20, 20, 20, 20],
+  });
+  const surface = (id: string, bow?: number) => ({ id, ...(bow === undefined ? {} : { bow }) }) as never;
+  const base = createProject({ name: 'T' });
+
+  it('lays the bow of every panel along the sheet length, either end first', () => {
+    const project = { ...base, surfaces: [surface('deck', 90)], panels: [panel('a', 'deck', 800, 500)] };
+    const parts = nestParts(project);
+    expect(parts[0].rotations).toEqual([270, 90]);
+    const r = nest(parts, nestOptionsOf(project.settings));
+    // the panel's y axis (the bow) now runs along the sheet: 500 along, 800 across
+    expect(summarize(project, r)[0].usedWidth).toBeGreaterThanOrEqual(800);
+  });
+
+  it('keeps panels as drawn when the bow is not set', () => {
+    const project = { ...base, surfaces: [surface('deck')], panels: [panel('a', 'deck', 800, 500)] };
+    expect(nestParts(project)[0].rotations).toEqual([0, 180]);
+  });
+
+  it('turns each panel by the bow of its own surface', () => {
+    const project = { ...base, settings: { ...base.settings, turning: 'none' as const }, surfaces: [surface('deck', 90), surface('wall', 0)], panels: [panel('a', 'deck', 800, 500), panel('b', 'wall', 800, 500)] };
+    expect(nestParts(project).map((p) => p.rotations)).toEqual([[270], [0]]);
   });
 });

@@ -4,7 +4,9 @@ import { segmentFlatRegions } from '../src/core/segment';
 import { extractOutline } from '../src/core/outline';
 import { autoClean, bridgeGaps, nearestEdgeIndex, outlinePolygon, resolveCorners } from '../src/core/cleanOutline';
 import { polygonArea } from '../src/core/poly';
-import { checkLength, createSurface, removeSideExtend, surfaceToDxf, withAnchors } from '../src/core/surface';
+import { bowOf, checkLength, createSurface, guessBow, removeSideExtend, surfaceToDxf, withAnchors } from '../src/core/surface';
+import type { Orientation } from '../src/core/orientation';
+import type { Plane } from '../src/core/segment';
 import { extendToMeet, slideAlongSides } from '../src/core/poly';
 import { eigenSymmetric3 } from '../src/core/vec';
 import { computeOrientation } from '../src/core/orientation';
@@ -208,5 +210,23 @@ describe('alignment tools', () => {
     expect(fixed.outline.corners.length).toBe(4);
     const key = (c: number[]) => c.map((v) => Math.round(v)).join(',');
     expect(fixed.outline.corners.map(key).sort()).toEqual(['0,0', '0,600', '1000,0', '1000,600'].sort());
+  });
+});
+
+describe('where the bow is', () => {
+  const orientation = { up: [0, 0, 1], right: [1, 0, 0], forward: [0, 1, 0] } as Orientation;
+  it('on a deck follows the longest direction of the scan', () => {
+    // deck whose own x axis runs across the boat (along forward): the bow is along its −y or +y
+    const plane = { origin: [0, 0, 0], normal: [0, 0, 1], u: [0, 1, 0], v: [-1, 0, 0] } as Plane;
+    expect([90, 270]).toContain(guessBow(plane, orientation));
+  });
+  it('on a wall runs horizontally along the wall', () => {
+    // wall facing across the boat; its x axis points up the wall
+    const plane = { origin: [0, 0, 0], normal: [0, 1, 0], u: [0, 0, 1], v: [1, 0, 0] } as Plane;
+    expect([90, 270]).toContain(guessBow(plane, orientation));
+  });
+  it('is 0 when not set', () => {
+    expect(bowOf({})).toBe(0);
+    expect(bowOf({ bow: 45 })).toBe(45);
   });
 });

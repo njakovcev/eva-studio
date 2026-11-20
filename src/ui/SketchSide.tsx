@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { BowControl } from './Bow';
 import { newId } from '../core/project';
 import { isDimension, type SkDimension, type Sketch } from '../core/sketch/model';
 import { addConstraint, analyse, measure, setDimension } from '../core/sketch/solver';
@@ -177,6 +178,8 @@ export function SketchSide({ sketch }: { sketch: Sketch }) {
           <small>Photos shot at an angle are stretched: measurements typed in always win over the photo.</small>
         </>
       )}
+
+      {surface && <BowControl surface={surface} />}
 
       <div className="side__actions">
         {surface ? (

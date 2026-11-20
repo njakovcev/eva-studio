@@ -1,4 +1,6 @@
 import { useMemo, useRef } from 'react';
+import { BowArrow } from './Bow';
+import { bowOf } from '../core/surface';
 import { designPanel, edgePaths } from '../core/design';
 import { applyPlacement } from '../core/nest';
 import { cutOutline, cutoutOutline } from '../core/panel';
@@ -70,6 +72,7 @@ export function ExportView() {
                 <path className="sheet__cut" d={svgPath(cut.flat)} strokeWidth={1.5 * px} />
               </g>
               <text className="sheet__label" x={(b.minX + b.maxX) / 2} y={-(b.minY + b.maxY) / 2} fontSize={13 * px} textAnchor="middle" strokeWidth={3 * px}>{panel.name}</text>
+              <BowArrow angle={bowOf(project.surfaces.find((x) => x.id === panel.surfaceId)) + pl.angle} at={[(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2 - 40 * px]} px={px} size={60} />
             </g>
           );
         })}
